@@ -1,7 +1,7 @@
-import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
-import { getTopLevelMediaType } from '@ai-sdk/provider-utils';
+import type { LanguageModelV4Prompt } from "@ai-sdk/provider";
+import { getTopLevelMediaType } from "@ai-sdk/provider-utils";
 
-import type { Modality } from './types';
+import type { Modality } from "./types";
 
 /**
  * Scan a model-level prompt (`LanguageModelV4Prompt`, spec v4 — what the AI SDK
@@ -24,15 +24,15 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
   const modalities = new Set<Modality>();
 
   for (const message of prompt) {
-    if (message.role === 'system') {
-      modalities.add('text');
+    if (message.role === "system") {
+      modalities.add("text");
       continue;
     }
 
     for (const part of message.content) {
-      if (part.type === 'text' || part.type === 'reasoning') {
-        modalities.add('text');
-      } else if (part.type === 'file') {
+      if (part.type === "text" || part.type === "reasoning") {
+        modalities.add("text");
+      } else if (part.type === "file") {
         const modality = fileModality(part.mediaType);
         if (modality !== null) {
           modalities.add(modality);
@@ -54,16 +54,16 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
 function fileModality(rawMediaType: string): Modality | null {
   // Strip any media-type parameters (e.g. `application/pdf; charset=…`) before
   // matching so `type/subtype` comparisons stay exact.
-  const mediaType = rawMediaType.toLowerCase().split(';')[0].trim();
+  const mediaType = rawMediaType.toLowerCase().split(";")[0].trim();
 
   // PDF is application/pdf — special-case before the top-level scan.
-  if (mediaType === 'application/pdf' || mediaType === 'application/x-pdf') {
-    return 'pdf';
+  if (mediaType === "application/pdf" || mediaType === "application/x-pdf") {
+    return "pdf";
   }
 
   // Normalizes 'image/png', 'image/*' and bare 'image' all to 'image'.
   const top = getTopLevelMediaType(mediaType);
-  if (top === 'image' || top === 'video' || top === 'audio' || top === 'text') {
+  if (top === "image" || top === "video" || top === "audio" || top === "text") {
     return top;
   }
 
@@ -76,7 +76,7 @@ function fileModality(rawMediaType: string): Modality | null {
  */
 export function supportsAll(
   supports: Modality[],
-  required: Set<Modality>,
+  required: Set<Modality>
 ): boolean {
   for (const modality of required) {
     if (!supports.includes(modality)) {

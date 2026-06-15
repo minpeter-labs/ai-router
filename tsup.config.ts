@@ -1,12 +1,12 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts',
-    friendli: 'src/provider/friendli/friendli.ts',
-    openrouter: 'src/provider/openrouter/openrouter.ts',
+    index: "src/index.ts",
+    friendli: "src/provider/friendli/friendli.ts",
+    openrouter: "src/provider/openrouter/openrouter.ts",
   },
-  format: ['esm', 'cjs'],
+  format: ["esm", "cjs"],
   dts: true,
   treeshake: true,
   clean: true,

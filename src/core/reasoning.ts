@@ -1,4 +1,4 @@
-import type { LanguageModelMiddleware } from 'ai';
+import type { LanguageModelMiddleware } from "ai";
 
 /**
  * Reasoning dialect for a downstream provider.
@@ -6,7 +6,7 @@ import type { LanguageModelMiddleware } from 'ai';
  * - `friendli`   -> `chat_template_kwargs.thinking: boolean`
  * - `openrouter` -> `reasoning.enabled: boolean`
  */
-export type ReasoningDialect = 'friendli' | 'openrouter';
+export type ReasoningDialect = "friendli" | "openrouter";
 
 /**
  * Build a `transformRequestBody` hook for `createOpenAICompatible`.
@@ -32,7 +32,7 @@ export type ReasoningDialect = 'friendli' | 'openrouter';
  * plain `reasoning: 'none'` option.
  */
 export function translateReasoning(
-  dialect: ReasoningDialect,
+  dialect: ReasoningDialect
 ): (args: Record<string, unknown>) => Record<string, unknown> {
   return (args: Record<string, unknown>): Record<string, unknown> => {
     // Destructure reasoning_effort out so the returned body never carries it
@@ -43,10 +43,10 @@ export function translateReasoning(
       return { ...args }; // no reasoning requested -> leave untouched
     }
 
-    const enabled = !(effort === 'none' || effort === false);
+    const enabled = !(effort === "none" || effort === false);
     const body = rest;
 
-    if (dialect === 'friendli') {
+    if (dialect === "friendli") {
       body.chat_template_kwargs = {
         ...(body.chat_template_kwargs as Record<string, unknown> | undefined),
         thinking: enabled,
@@ -88,7 +88,7 @@ export function reasoningMiddleware(name: string): LanguageModelMiddleware {
     transformParams: ({ params }) => {
       const reasoning = params.reasoning;
       // Leave the provider default in place when nothing actionable was asked.
-      if (reasoning == null || reasoning === 'provider-default') {
+      if (reasoning == null || reasoning === "provider-default") {
         return Promise.resolve(params);
       }
 

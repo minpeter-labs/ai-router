@@ -1,18 +1,18 @@
 import {
   createOpenAICompatible,
   type OpenAICompatibleProviderSettings,
-} from '@ai-sdk/openai-compatible';
-import type { LanguageModelV4 } from '@ai-sdk/provider';
-import { wrapLanguageModel } from 'ai';
+} from "@ai-sdk/openai-compatible";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import { wrapLanguageModel } from "ai";
 
-import { reasoningMiddleware, translateReasoning } from '../../core/reasoning';
+import { reasoningMiddleware, translateReasoning } from "../../core/reasoning";
 
-const DEFAULT_BASE_URL = 'https://api.friendli.ai/serverless/v1';
+const DEFAULT_BASE_URL = "https://api.friendli.ai/serverless/v1";
 
 export interface CreateFriendliSettings
   extends Omit<
     OpenAICompatibleProviderSettings,
-    'name' | 'baseURL' | 'transformRequestBody'
+    "name" | "baseURL" | "transformRequestBody"
   > {
   /** Friendli API token. Defaults to `process.env.FRIENDLI_TOKEN`. */
   apiKey?: string;
@@ -33,21 +33,21 @@ export interface CreateFriendliSettings
  * await streamText({ model: friendli('moonshotai/Kimi-K2.5'), reasoning: 'high', prompt: '...' });
  */
 export function createFriendli(
-  settings: CreateFriendliSettings = {},
+  settings: CreateFriendliSettings = {}
 ): (modelId: string) => LanguageModelV4 {
   const { apiKey, baseURL, ...rest } = settings;
   const provider = createOpenAICompatible({
     ...rest,
-    name: 'friendli',
+    name: "friendli",
     baseURL: baseURL ?? DEFAULT_BASE_URL,
     apiKey: apiKey ?? process.env.FRIENDLI_TOKEN,
-    transformRequestBody: translateReasoning('friendli'),
+    transformRequestBody: translateReasoning("friendli"),
   });
   // Wrap each model so a top-level `reasoning: 'none'` survives down to the body
   // (the AI SDK otherwise drops it before `transformRequestBody` can see it).
   return (modelId: string) =>
     wrapLanguageModel({
       model: provider(modelId),
-      middleware: reasoningMiddleware('friendli'),
+      middleware: reasoningMiddleware("friendli"),
     });
 }

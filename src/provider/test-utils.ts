@@ -9,15 +9,15 @@
  */
 export function chatCompletionResponse(): Response {
   return Response.json({
-    id: '1',
-    object: 'chat.completion',
+    id: "1",
+    object: "chat.completion",
     created: 0,
-    model: 'm',
+    model: "m",
     choices: [
       {
         index: 0,
-        message: { role: 'assistant', content: 'ok' },
-        finish_reason: 'stop',
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
       },
     ],
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -37,7 +37,7 @@ export interface CapturedRequest {
  */
 /** Resolve a fetch `input` (string | URL | Request) to its URL string. */
 function requestUrl(input: RequestInfo | URL): string {
-  if (typeof input === 'string') {
+  if (typeof input === "string") {
     return input;
   }
   if (input instanceof URL) {
@@ -54,7 +54,7 @@ export function captureFetch(): {
   const fetch: typeof globalThis.fetch = (input, init) => {
     captured.url = requestUrl(input);
     captured.headers = new Headers(init?.headers as HeadersInit);
-    if (typeof init?.body === 'string') {
+    if (typeof init?.body === "string") {
       captured.body = JSON.parse(init.body);
     }
     return Promise.resolve(chatCompletionResponse());

@@ -1,12 +1,6 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
   "extends": ["ultracite/biome/core", "ultracite/biome/vitest"],
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "single",
-      "trailingCommas": "all"
-    }
-  },
   "overrides": [
     {
       "includes": ["src/index.ts"],

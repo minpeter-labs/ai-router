@@ -3,15 +3,15 @@ import type {
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamResult,
-} from '@ai-sdk/provider';
-import type { LanguageModel } from 'ai';
+} from "@ai-sdk/provider";
+import type { LanguageModel } from "ai";
 
-import { detectModalities, supportsAll } from './modality';
+import { detectModalities, supportsAll } from "./modality";
 import type {
   CreateRouterOptions,
   OnRouterError,
   ProviderEntry,
-} from './types';
+} from "./types";
 
 /**
  * Resolved candidate: a provider entry plus its lazily-instantiated model.
@@ -38,8 +38,8 @@ interface ResolvedEntry {
  * identical option/result shapes, so no transformation is needed.
  */
 class RouterLanguageModel implements LanguageModelV4 {
-  readonly specificationVersion = 'v4' as const;
-  readonly provider = 'router';
+  readonly specificationVersion = "v4" as const;
+  readonly provider = "router";
   readonly modelId: string;
 
   private readonly entries: ProviderEntry[];
@@ -51,7 +51,7 @@ class RouterLanguageModel implements LanguageModelV4 {
   constructor(
     logicalId: string,
     entries: ProviderEntry[],
-    onError?: OnRouterError,
+    onError?: OnRouterError
   ) {
     this.modelId = logicalId;
     this.entries = entries;
@@ -63,7 +63,7 @@ class RouterLanguageModel implements LanguageModelV4 {
    * object or a Promise; never copy/await it eagerly. If there are no
    * candidates we report "no supported URLs".
    */
-  get supportedUrls(): LanguageModelV4['supportedUrls'] {
+  get supportedUrls(): LanguageModelV4["supportedUrls"] {
     if (this.entries.length === 0) {
       return {};
     }
@@ -71,14 +71,14 @@ class RouterLanguageModel implements LanguageModelV4 {
   }
 
   doGenerate(
-    options: LanguageModelV4CallOptions,
+    options: LanguageModelV4CallOptions
   ): Promise<LanguageModelV4GenerateResult> {
     const candidates = this.selectCandidates(options);
     return this.run(candidates, (model) => model.doGenerate(options));
   }
 
   doStream(
-    options: LanguageModelV4CallOptions,
+    options: LanguageModelV4CallOptions
   ): Promise<LanguageModelV4StreamResult> {
     const candidates = this.selectCandidates(options);
     return this.run(candidates, (model) => model.doStream(options));
@@ -100,9 +100,9 @@ class RouterLanguageModel implements LanguageModelV4 {
     // spec). Otherwise it would crash deep inside the routed call and be
     // swallowed into fallback as an opaque error. The literal `'v4'` check also
     // narrows the `LanguageModel` union down to `LanguageModelV4`.
-    if (typeof model !== 'object' || model.specificationVersion !== 'v4') {
+    if (typeof model !== "object" || model.specificationVersion !== "v4") {
       throw new Error(
-        `ai-router: provider for "${this.modelId}" (model "${entry.model}") did not return a v4 LanguageModel`,
+        `ai-router: provider for "${this.modelId}" (model "${entry.model}") did not return a v4 LanguageModel`
       );
     }
     this.modelCache.set(index, model);
@@ -111,7 +111,7 @@ class RouterLanguageModel implements LanguageModelV4 {
 
   /** Filter entries by the prompt's required modalities, preserving order. */
   private selectCandidates(
-    options: LanguageModelV4CallOptions,
+    options: LanguageModelV4CallOptions
   ): ResolvedEntry[] {
     const required = detectModalities(options.prompt);
     const resolved: ResolvedEntry[] = [];
@@ -127,11 +127,11 @@ class RouterLanguageModel implements LanguageModelV4 {
   /** Try each candidate in order; fall back on error, re-throw the last one. */
   private async run<T>(
     candidates: ResolvedEntry[],
-    call: (model: LanguageModelV4) => PromiseLike<T>,
+    call: (model: LanguageModelV4) => PromiseLike<T>
   ): Promise<T> {
     if (candidates.length === 0) {
       throw new Error(
-        `ai-router: no candidate for "${this.modelId}" supports the requested input modalities`,
+        `ai-router: no candidate for "${this.modelId}" supports the requested input modalities`
       );
     }
 
@@ -170,7 +170,7 @@ class RouterLanguageModel implements LanguageModelV4 {
  * await streamText({ model: route('chat'), prompt: 'hello' });
  */
 export function createRouter(
-  options: CreateRouterOptions,
+  options: CreateRouterOptions
 ): (logicalId: string) => LanguageModel {
   const { models, onError } = options;
 
@@ -181,7 +181,7 @@ export function createRouter(
     }
     if (entries.length === 0) {
       throw new Error(
-        `ai-router: model id "${logicalId}" has no provider entries`,
+        `ai-router: model id "${logicalId}" has no provider entries`
       );
     }
     return new RouterLanguageModel(logicalId, entries, onError);
