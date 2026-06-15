@@ -5,7 +5,7 @@ import {
 } from '@ai-sdk/openai-compatible';
 import { wrapLanguageModel } from 'ai';
 
-import { reasoningMiddleware, translateReasoning } from '../../reasoning';
+import { reasoningMiddleware, translateReasoning } from '../../core/reasoning';
 
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 
