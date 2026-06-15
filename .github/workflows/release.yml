@@ -10,6 +10,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # OIDC token for npm trusted publishing (no NPM_TOKEN needed)
 
 jobs:
   release:
@@ -18,6 +19,8 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -25,9 +28,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24 # OIDC trusted publishing needs Node > 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      # Trusted publishing requires npm CLI >= 11.5.1.
+      - name: Ensure recent npm
+        run: npm install -g npm@latest
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
@@ -40,4 +47,5 @@ jobs:
           publish: pnpm release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No NPM_TOKEN: `changeset publish` authenticates via OIDC trusted
+          # publishing (id-token: write + a trusted publisher configured on npm).

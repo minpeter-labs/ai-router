@@ -5,6 +5,12 @@
   "type": "module",
   "license": "MIT",
   "author": "minpeter <minpeter@vooy.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minpeter-labs/ai-router.git"
+  },
+  "homepage": "https://github.com/minpeter-labs/ai-router#readme",
+  "bugs": "https://github.com/minpeter-labs/ai-router/issues",
   "packageManager": "pnpm@11.3.0",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
