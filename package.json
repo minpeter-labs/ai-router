@@ -51,7 +51,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "example": "tsx examples/basic.ts",
-    "example:offline": "tsx examples/offline.ts",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"
@@ -70,6 +69,7 @@
     "@changesets/cli": "^2.27.0",
     "@types/node": "^25.9.3",
     "ai": "^7.0.0-beta.116",
+    "dotenv": "^17.4.2",
     "tsup": "^8.5.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",

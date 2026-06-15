@@ -1,11 +1,15 @@
-// Real usage — talks to actual providers. Set at least one key, then run:
+// Real usage — talks to the actual Friendli / OpenRouter APIs.
 //
-//   FRIENDLI_TOKEN=...     pnpm example
-//   OPENROUTER_API_KEY=... pnpm example
+// 1. Copy .env.example to .env at the repo root and fill in your key(s).
+// 2. Run it:  pnpm example
 //
-// With both set you get genuine fallback: if Friendli rejects the request the
-// router transparently retries the same logical model on OpenRouter. With only
-// one key set, the other candidate fails its auth and the router falls through.
+// Set at least one key; with both set you get genuine fallback — if Friendli
+// rejects the request, the router transparently retries the same logical model
+// on OpenRouter.
+
+import { config as loadEnv } from "dotenv";
+
+loadEnv({ path: ".env", quiet: true, override: true });
 
 import { createRouter } from "@minpeter/ai-router";
 import { createFriendli } from "@minpeter/ai-router/friendli";
@@ -14,24 +18,24 @@ import { generateText } from "ai";
 
 if (!(process.env.FRIENDLI_TOKEN || process.env.OPENROUTER_API_KEY)) {
   process.stdout.write(
-    "Set FRIENDLI_TOKEN and/or OPENROUTER_API_KEY to run this example.\n" +
-      "No key needed for the offline smoke test: pnpm example:offline\n"
+    "No key found. Add FRIENDLI_TOKEN and/or OPENROUTER_API_KEY to a .env file " +
+      "at the repo root (see .env.example), then run `pnpm example`.\n"
   );
   process.exit(0);
 }
 
 const router = createRouter({
   models: {
-    kimi: [
+    "gemma-4-31B-it": [
       {
         provider: createFriendli(),
-        model: "moonshotai/Kimi-K2.5",
+        model: "google/gemma-4-31B-it",
         supports: ["text"],
       },
       {
         provider: createOpenRouter(),
-        model: "moonshotai/kimi-k2.5",
-        supports: ["text"],
+        model: "google/gemma-4-31b-it:nitro",
+        supports: ["text", "image"],
       },
     ],
   },
@@ -39,10 +43,22 @@ const router = createRouter({
     process.stderr.write(`[${logicalId}] fell through: ${String(error)}\n`),
 });
 
-const { text } = await generateText({
-  model: router("kimi"),
+const { text, steps } = await generateText({
+  model: router("gemma-4-31B-it"),
   prompt: "In one sentence, what is a language model router?",
   reasoning: "low",
 });
 
+// Reasoning lives on the final step (the top-level `reasoningText` is deprecated).
+const reasoningText = steps.at(-1)?.reasoningText;
+
+// Print any reasoning dimmed/gray so it reads as secondary next to the answer.
+// Only colorize a real terminal — stays clean when piped to a file.
+const ESC = String.fromCharCode(27); // ANSI escape; no raw control byte in source
+const dim = (s: string) =>
+  process.stdout.isTTY ? `${ESC}[2m${s}${ESC}[0m` : s;
+
+if (reasoningText) {
+  process.stdout.write(`${dim(`💭 ${reasoningText}`)}\n\n`);
+}
 process.stdout.write(`${text}\n`);
