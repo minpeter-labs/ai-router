@@ -1,5 +1,5 @@
-import type { LanguageModelV4 } from '@ai-sdk/provider';
-import type { LanguageModel } from 'ai';
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { LanguageModel } from "ai";
 
 /**
  * Input modalities the router can detect in a prompt and match against a
@@ -11,7 +11,7 @@ import type { LanguageModel } from 'ai';
  * - `audio` — file parts with a top-level `audio` media type.
  * - `pdf`   — file parts with media type `application/pdf` (special-cased).
  */
-export type Modality = 'text' | 'image' | 'video' | 'audio' | 'pdf';
+export type Modality = "text" | "image" | "video" | "audio" | "pdf";
 
 /**
  * Factory that produces a concrete AI SDK language model for a given model id.
@@ -31,10 +31,10 @@ export type ProviderFactory = (modelId: string) => LanguageModel;
  * { provider: createFriendli(), model: 'K2-Instruct' } // matches any modality
  */
 export interface ProviderEntryFactory {
-  /** Factory that instantiates the underlying model (e.g. a provider instance). */
-  provider: ProviderFactory;
   /** The provider-specific model id passed to `provider(model)`. */
   model: string;
+  /** Factory that instantiates the underlying model (e.g. a provider instance). */
+  provider: ProviderFactory;
   /** Input modalities this backend can handle. Omit to match any modality. */
   supports?: Modality[];
 }
@@ -49,10 +49,10 @@ export interface ProviderEntryFactory {
 export interface ProviderEntryInstance {
   /** A pre-built v4 `LanguageModel` (e.g. `provider('id')` or `wrapLanguageModel(...)`). */
   model: LanguageModelV4;
-  /** Input modalities this backend can handle. Omit to match any modality. */
-  supports?: Modality[];
   /** Must be absent — this discriminates the instance form from the factory form. */
   provider?: undefined;
+  /** Input modalities this backend can handle. Omit to match any modality. */
+  supports?: Modality[];
 }
 
 /**
@@ -107,7 +107,7 @@ export type OnRouterError = (info: {
   /** The error thrown by the candidate, or the in-band error-part value. */
   error: unknown;
   /** Where the failure happened. (additive) */
-  phase?: 'generate' | 'stream-open' | 'stream-mid';
+  phase?: "generate" | "stream-open" | "stream-mid";
   /** Whether the router will retry another candidate after this error. (additive) */
   willRetry?: boolean;
 }) => void;
@@ -117,19 +117,18 @@ export type OnRouterError = (info: {
  */
 export interface CreateRouterOptions {
   /**
+   * Opt-in sticky+reset. Omit / `false` => fully stateless (every request starts
+   * at the first candidate — the default). `true` => defaults
+   * (`modelResetInterval: 180000`). An object tunes the interval.
+   */
+  cooldown?: CooldownConfig | boolean;
+  /**
    * Map of logical model id -> ordered list of candidate backends.
    * Candidates are tried in array order (after modality filtering).
    */
   models: Record<string, ProviderEntry[]>;
   /** Optional hook invoked each time a candidate fails before falling back. */
   onError?: OnRouterError;
-  /**
-   * Custom retry classifier. When provided it REPLACES the default classifier
-   * (it is not composed). Returning `false` stops fallback and surfaces the
-   * error; returning `true` falls through to the next candidate. Defaults to
-   * {@link defaultShouldRetryThisError}.
-   */
-  shouldRetryThisError?: ShouldRetryThisError;
   /**
    * Whether to fall back after content has already streamed. Default `false`:
    * once any content part has been emitted, a mid-stream error is surfaced
@@ -138,9 +137,10 @@ export interface CreateRouterOptions {
    */
   retryAfterOutput?: boolean;
   /**
-   * Opt-in sticky+reset. Omit / `false` => fully stateless (every request starts
-   * at the first candidate — the default). `true` => defaults
-   * (`modelResetInterval: 180000`). An object tunes the interval.
+   * Custom retry classifier. When provided it REPLACES the default classifier
+   * (it is not composed). Returning `false` stops fallback and surfaces the
+   * error; returning `true` falls through to the next candidate. Defaults to
+   * {@link defaultShouldRetryThisError}.
    */
-  cooldown?: CooldownConfig | boolean;
+  shouldRetryThisError?: ShouldRetryThisError;
 }

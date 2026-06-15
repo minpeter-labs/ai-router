@@ -1,18 +1,18 @@
-import type { LanguageModelV4 } from '@ai-sdk/provider';
 import {
   createOpenAICompatible,
   type OpenAICompatibleProviderSettings,
-} from '@ai-sdk/openai-compatible';
-import { wrapLanguageModel } from 'ai';
+} from "@ai-sdk/openai-compatible";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import { wrapLanguageModel } from "ai";
 
-import { reasoningMiddleware, translateReasoning } from '../../core/reasoning';
+import { reasoningMiddleware, translateReasoning } from "../../core/reasoning";
 
-const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
+const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
 export interface CreateOpenRouterSettings
   extends Omit<
     OpenAICompatibleProviderSettings,
-    'name' | 'baseURL' | 'transformRequestBody'
+    "name" | "baseURL" | "transformRequestBody"
   > {
   /** OpenRouter API key. Defaults to `process.env.OPENROUTER_API_KEY`. */
   apiKey?: string;
@@ -33,21 +33,21 @@ export interface CreateOpenRouterSettings
  * await streamText({ model: openrouter('moonshotai/kimi-k2.5'), reasoning: 'high', prompt: '...' });
  */
 export function createOpenRouter(
-  settings: CreateOpenRouterSettings = {},
+  settings: CreateOpenRouterSettings = {}
 ): (modelId: string) => LanguageModelV4 {
   const { apiKey, baseURL, ...rest } = settings;
   const provider = createOpenAICompatible({
     ...rest,
-    name: 'openrouter',
+    name: "openrouter",
     baseURL: baseURL ?? DEFAULT_BASE_URL,
     apiKey: apiKey ?? process.env.OPENROUTER_API_KEY,
-    transformRequestBody: translateReasoning('openrouter'),
+    transformRequestBody: translateReasoning("openrouter"),
   });
   // Wrap each model so a top-level `reasoning: 'none'` survives down to the body
   // (the AI SDK otherwise drops it before `transformRequestBody` can see it).
   return (modelId: string) =>
     wrapLanguageModel({
       model: provider(modelId),
-      middleware: reasoningMiddleware('openrouter'),
+      middleware: reasoningMiddleware("openrouter"),
     });
 }

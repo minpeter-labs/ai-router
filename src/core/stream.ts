@@ -3,10 +3,10 @@ import type {
   LanguageModelV4CallOptions,
   LanguageModelV4StreamPart,
   LanguageModelV4StreamResult,
-} from '@ai-sdk/provider';
+} from "@ai-sdk/provider";
 
-import { safeShouldRetry, surfaceFailure } from './retry';
-import type { OnRouterError, ProviderEntry } from './types';
+import { safeShouldRetry, surfaceFailure } from "./retry";
+import type { OnRouterError, ProviderEntry } from "./types";
 
 /**
  * A modality-filtered candidate, resolved to a concrete v4 model. `fullIndex` is
@@ -16,30 +16,30 @@ import type { OnRouterError, ProviderEntry } from './types';
 export interface ResolvedEntry {
   /** The user's original `ProviderEntry` (surfaced verbatim on `onError`). */
   entry: ProviderEntry;
-  /** The instantiated v4 model. */
-  model: LanguageModelV4;
   /** Index into the full (unfiltered) entries array. */
   fullIndex: number;
+  /** The instantiated v4 model. */
+  model: LanguageModelV4;
 }
 
 export interface FallbackStreamArgs {
-  logicalId: string;
   /** Modality-filtered candidates, in order. */
   candidates: ResolvedEntry[];
-  /** Index into `candidates` of the first attempt (the one `firstResult` came from). */
-  startIndex: number;
-  options: LanguageModelV4CallOptions;
   /** The already-awaited stream result of `candidates[startIndex]`. */
   firstResult: LanguageModelV4StreamResult;
-  /** Retry classifier (already resolved). `true` => fall through to the next candidate. */
-  shouldRetry: (error: unknown) => boolean;
-  /** Retry even after content has streamed (may duplicate output). */
-  retryAfterOutput: boolean;
-  onError?: OnRouterError;
+  logicalId: string;
   /** Cooldown hook: commit the candidate at this filtered index as the survivor. */
   onAdvance?: (filteredIndex: number, hadFailure: boolean) => void;
+  onError?: OnRouterError;
+  options: LanguageModelV4CallOptions;
   /** Pre-open failures (candidates that threw before `firstResult`) for the aggregate. */
   priorErrors?: unknown[];
+  /** Retry even after content has streamed (may duplicate output). */
+  retryAfterOutput: boolean;
+  /** Retry classifier (already resolved). `true` => fall through to the next candidate. */
+  shouldRetry: (error: unknown) => boolean;
+  /** Index into `candidates` of the first attempt (the one `firstResult` came from). */
+  startIndex: number;
 }
 
 /**
@@ -57,19 +57,36 @@ export interface FallbackStreamArgs {
  * (committing), so we never risk re-emitting it across a fallback.
  */
 const FRAMING_PARTS: ReadonlySet<string> = new Set([
-  'stream-start',
-  'response-metadata',
-  'text-start',
-  'text-end',
-  'reasoning-start',
-  'reasoning-end',
-  'tool-input-start',
-  'tool-input-end',
-  'raw',
+  "stream-start",
+  "response-metadata",
+  "text-start",
+  "text-end",
+  "reasoning-start",
+  "reasoning-end",
+  "tool-input-start",
+  "tool-input-end",
+  "raw",
 ]);
 
 function isFramingPart(part: LanguageModelV4StreamPart): boolean {
   return FRAMING_PARTS.has(part.type);
+}
+
+/** Cancel an upstream reader, swallowing a sync throw or async rejection. */
+function cancelQuietly(
+  reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart> | null,
+  reason: unknown
+): void {
+  if (reader === null) {
+    return;
+  }
+  try {
+    Promise.resolve(reader.cancel(reason)).catch(() => {
+      // A transport may reject while aborting; nothing to recover.
+    });
+  } catch {
+    // A synchronous throw from cancel(); ignore.
+  }
 }
 
 /**
@@ -79,7 +96,9 @@ function isFramingPart(part: LanguageModelV4StreamPart): boolean {
  * snapshots them at stream-open (as the AI SDK does) keeps the first candidate's
  * values across a later fallback.
  */
-export function wrapStreamResult(args: FallbackStreamArgs): LanguageModelV4StreamResult {
+export function wrapStreamResult(
+  args: FallbackStreamArgs
+): LanguageModelV4StreamResult {
   let active: LanguageModelV4StreamResult = args.firstResult;
   const stream = createFallbackStream(args, (result) => {
     active = result;
@@ -113,180 +132,259 @@ export function wrapStreamResult(args: FallbackStreamArgs): LanguageModelV4Strea
  */
 export function createFallbackStream(
   args: FallbackStreamArgs,
-  setActive: (result: LanguageModelV4StreamResult) => void,
+  setActive: (result: LanguageModelV4StreamResult) => void
 ): ReadableStream<LanguageModelV4StreamPart> {
-  let committed = false; // has the live candidate emitted content / finished?
-  let finished = false; // a `finish` part was emitted; the stream is complete
-  let prelude: LanguageModelV4StreamPart[] = []; // current candidate's buffered framing
-  let cancelled = false;
-  let cancelReason: unknown;
-  const errors: unknown[] = args.priorErrors ? [...args.priorErrors] : [];
-  let activeReader: ReadableStreamDefaultReader<LanguageModelV4StreamPart> | null = null;
-
+  let pump: FallbackPump | null = null;
   return new ReadableStream<LanguageModelV4StreamPart>({
-    async start(controller) {
-      const safeEnqueue = (part: LanguageModelV4StreamPart): void => {
-        try {
-          controller.enqueue(part);
-        } catch {
-          /* controller already closed/errored (e.g. after cancel) */
-        }
-      };
-      const safeClose = (): void => {
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
-      };
-      const safeError = (error: unknown): void => {
-        try {
-          controller.error(error);
-        } catch {
-          /* already closed/errored */
-        }
-      };
-      const flushPrelude = (): void => {
-        for (const part of prelude) safeEnqueue(part);
-        prelude = [];
-      };
-
-      const emitOnError = (error: unknown, idx: number, willRetry: boolean): void => {
-        try {
-          args.onError?.({
-            logicalId: args.logicalId,
-            entry: args.candidates[idx].entry,
-            index: idx,
-            error,
-            phase: committed ? 'stream-mid' : 'stream-open',
-            willRetry,
-          });
-        } catch {
-          /* onError must not break the pump */
-        }
-      };
-
-      const onFailure = async (error: unknown, idx: number): Promise<void> => {
-        // The failed candidate's buffered framing is dropped — it never streams.
-        prelude = [];
-        errors.push(error);
-        const blockedByOutput = committed && !args.retryAfterOutput;
-        const retry = blockedByOutput ? false : safeShouldRetry(args.shouldRetry, error);
-
-        const nextIdx = idx + 1;
-        const hasNext = retry && nextIdx < args.candidates.length;
-        emitOnError(error, idx, hasNext);
-
-        if (blockedByOutput || !retry) {
-          safeError(error);
-          return;
-        }
-        if (!hasNext) {
-          safeError(surfaceFailure(errors, args.logicalId));
-          return;
-        }
-        if (cancelled) return;
-
-        let nextResult: LanguageModelV4StreamResult;
-        try {
-          nextResult = await args.candidates[nextIdx].model.doStream(args.options);
-        } catch (openErr) {
-          return onFailure(openErr, nextIdx);
-        }
-        return pump(nextResult, nextIdx);
-      };
-
-      const pump = async (result: LanguageModelV4StreamResult, idx: number): Promise<void> => {
-        setActive(result);
-        const reader = result.stream.getReader();
-        activeReader = reader;
-        let advanced = false; // commit this candidate to cooldown once, on first commit part
-        try {
-          if (cancelled) return;
-          for (;;) {
-            let res: ReadableStreamReadResult<LanguageModelV4StreamPart>;
-            try {
-              res = await reader.read();
-            } catch (readErr) {
-              // A read rejection after the stream already finished is just the
-              // connection closing — nothing left to fall back to.
-              if (finished) {
-                safeClose();
-                return;
-              }
-              return await onFailure(readErr, idx);
-            }
-            if (cancelled) return;
-            if (res.done) {
-              flushPrelude();
-              safeClose();
-              return;
-            }
-            const value = res.value;
-
-            if (value.type === 'error') {
-              if (finished) {
-                safeClose();
-                return;
-              }
-              if (committed && !args.retryAfterOutput) {
-                // Content already streamed and we won't retry — forward verbatim.
-                flushPrelude();
-                safeEnqueue(value);
-                safeClose();
-                return;
-              }
-              return await onFailure(value.error, idx);
-            }
-
-            if (isFramingPart(value)) {
-              if (committed) safeEnqueue(value); // post-commit framing passes through
-              else prelude.push(value); // pre-commit framing is buffered
-              continue;
-            }
-
-            // A commit part: real content, or a `finish` terminal.
-            if (!committed) {
-              committed = true;
-              flushPrelude();
-            }
-            safeEnqueue(value);
-            if (value.type === 'finish') finished = true;
-            if (!advanced) {
-              advanced = true;
-              args.onAdvance?.(idx, errors.length > 0);
-            }
-          }
-        } finally {
-          if (cancelled) {
-            // Propagate the consumer's cancel to the live upstream (this may be a
-            // survivor opened during the fallback race) so its transport closes.
-            try {
-              void Promise.resolve(reader.cancel(cancelReason)).catch(() => {});
-            } catch {
-              /* ignore */
-            }
-          } else {
-            try {
-              reader.releaseLock();
-            } catch {
-              /* already released */
-            }
-          }
-          if (activeReader === reader) activeReader = null;
-        }
-      };
-
-      await pump(args.firstResult, args.startIndex);
+    start(controller) {
+      pump = new FallbackPump(args, setActive, controller);
+      return pump.run();
     },
     cancel(reason) {
-      cancelled = true;
-      cancelReason = reason;
-      try {
-        void Promise.resolve(activeReader?.cancel(reason)).catch(() => {});
-      } catch {
-        /* ignore */
-      }
+      pump?.cancel(reason);
     },
   });
+}
+
+/**
+ * Drives one wrapped stream: pumps the active candidate, buffers its framing
+ * until it commits, and falls back to the next candidate on a pre-commit
+ * failure. Extracted to a class so each step is a small method (rather than one
+ * deeply-nested closure).
+ */
+class FallbackPump {
+  private committed = false; // has the live candidate emitted content / finished?
+  private finished = false; // a `finish` part was emitted; the stream is complete
+  private prelude: LanguageModelV4StreamPart[] = []; // buffered framing of the live candidate
+  private cancelled = false;
+  private cancelReason: unknown;
+  private readonly errors: unknown[];
+  private activeReader: ReadableStreamDefaultReader<LanguageModelV4StreamPart> | null =
+    null;
+
+  private readonly args: FallbackStreamArgs;
+  private readonly setActive: (result: LanguageModelV4StreamResult) => void;
+  private readonly controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>;
+
+  constructor(
+    args: FallbackStreamArgs,
+    setActive: (result: LanguageModelV4StreamResult) => void,
+    controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>
+  ) {
+    this.args = args;
+    this.setActive = setActive;
+    this.controller = controller;
+    this.errors = args.priorErrors ? [...args.priorErrors] : [];
+  }
+
+  run(): Promise<void> {
+    return this.pump(this.args.firstResult, this.args.startIndex);
+  }
+
+  cancel(reason: unknown): void {
+    this.cancelled = true;
+    this.cancelReason = reason;
+    cancelQuietly(this.activeReader, reason);
+  }
+
+  private safeEnqueue(part: LanguageModelV4StreamPart): void {
+    try {
+      this.controller.enqueue(part);
+    } catch {
+      // Controller already closed/errored (e.g. after cancel).
+    }
+  }
+
+  private safeClose(): void {
+    try {
+      this.controller.close();
+    } catch {
+      // Already closed.
+    }
+  }
+
+  private safeError(error: unknown): void {
+    try {
+      this.controller.error(error);
+    } catch {
+      // Already closed/errored.
+    }
+  }
+
+  private flushPrelude(): void {
+    for (const part of this.prelude) {
+      this.safeEnqueue(part);
+    }
+    this.prelude = [];
+  }
+
+  private emitOnError(error: unknown, idx: number, willRetry: boolean): void {
+    try {
+      this.args.onError?.({
+        logicalId: this.args.logicalId,
+        entry: this.args.candidates[idx].entry,
+        index: idx,
+        error,
+        phase: this.committed ? "stream-mid" : "stream-open",
+        willRetry,
+      });
+    } catch {
+      // onError must not break the pump.
+    }
+  }
+
+  private async onFailure(error: unknown, idx: number): Promise<void> {
+    // The failed candidate's buffered framing is dropped — it never streams.
+    this.prelude = [];
+    this.errors.push(error);
+    const blockedByOutput = this.committed && !this.args.retryAfterOutput;
+    const retry = blockedByOutput
+      ? false
+      : safeShouldRetry(this.args.shouldRetry, error);
+
+    const nextIdx = idx + 1;
+    const hasNext = retry && nextIdx < this.args.candidates.length;
+    this.emitOnError(error, idx, hasNext);
+
+    if (blockedByOutput || !retry) {
+      this.safeError(error);
+      return;
+    }
+    if (!hasNext) {
+      this.safeError(surfaceFailure(this.errors, this.args.logicalId));
+      return;
+    }
+    if (this.cancelled) {
+      return;
+    }
+
+    let nextResult: LanguageModelV4StreamResult;
+    try {
+      nextResult = await this.args.candidates[nextIdx].model.doStream(
+        this.args.options
+      );
+    } catch (openErr) {
+      return this.onFailure(openErr, nextIdx);
+    }
+    return this.pump(nextResult, nextIdx);
+  }
+
+  // Buffer framing pre-commit, else commit + forward. Returns whether this
+  // candidate has been committed to cooldown yet.
+  private forwardPart(
+    value: LanguageModelV4StreamPart,
+    idx: number,
+    advanced: boolean
+  ): boolean {
+    if (isFramingPart(value)) {
+      if (this.committed) {
+        this.safeEnqueue(value); // post-commit framing passes through
+      } else {
+        this.prelude.push(value); // pre-commit framing is buffered
+      }
+      return advanced;
+    }
+    // A commit part: real content, or a `finish` terminal.
+    if (!this.committed) {
+      this.committed = true;
+      this.flushPrelude();
+    }
+    this.safeEnqueue(value);
+    if (value.type === "finish") {
+      this.finished = true;
+    }
+    if (advanced) {
+      return true;
+    }
+    this.args.onAdvance?.(idx, this.errors.length > 0);
+    return true;
+  }
+
+  private cleanupReader(
+    reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>
+  ): void {
+    if (this.cancelled) {
+      // Propagate the consumer's cancel to the live upstream (this may be a
+      // survivor opened during the fallback race) so its transport closes.
+      cancelQuietly(reader, this.cancelReason);
+    } else {
+      try {
+        reader.releaseLock();
+      } catch {
+        // Already released.
+      }
+    }
+    if (this.activeReader === reader) {
+      this.activeReader = null;
+    }
+  }
+
+  // A read rejection after the stream already finished is just the connection
+  // closing — nothing to fall back to; otherwise route it through onFailure.
+  private handleReadError(readErr: unknown, idx: number): Promise<void> {
+    if (this.finished) {
+      this.safeClose();
+      return Promise.resolve();
+    }
+    return this.onFailure(readErr, idx);
+  }
+
+  // An in-band error part: ignore after finish; forward verbatim if content
+  // already streamed and we won't retry; otherwise fall back (swallowing it).
+  private handleErrorPart(
+    value: Extract<LanguageModelV4StreamPart, { type: "error" }>,
+    idx: number
+  ): Promise<void> {
+    if (this.finished) {
+      this.safeClose();
+      return Promise.resolve();
+    }
+    if (this.committed && !this.args.retryAfterOutput) {
+      this.flushPrelude();
+      this.safeEnqueue(value);
+      this.safeClose();
+      return Promise.resolve();
+    }
+    return this.onFailure(value.error, idx);
+  }
+
+  private async pump(
+    result: LanguageModelV4StreamResult,
+    idx: number
+  ): Promise<void> {
+    this.setActive(result);
+    const reader = result.stream.getReader();
+    this.activeReader = reader;
+    let advanced = false; // commit this candidate to cooldown once, on first commit part
+    try {
+      if (this.cancelled) {
+        return;
+      }
+      for (;;) {
+        let res: ReadableStreamReadResult<LanguageModelV4StreamPart>;
+        try {
+          res = await reader.read();
+        } catch (readErr) {
+          await this.handleReadError(readErr, idx);
+          return;
+        }
+        if (this.cancelled) {
+          return;
+        }
+        if (res.done) {
+          this.flushPrelude();
+          this.safeClose();
+          return;
+        }
+        const value = res.value;
+        if (value.type === "error") {
+          await this.handleErrorPart(value, idx);
+          return;
+        }
+        advanced = this.forwardPart(value, idx, advanced);
+      }
+    } finally {
+      this.cleanupReader(reader);
+    }
+  }
 }

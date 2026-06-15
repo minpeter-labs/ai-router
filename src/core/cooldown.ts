@@ -1,4 +1,4 @@
-import type { CooldownConfig } from './types';
+import type { CooldownConfig } from "./types";
 
 const DEFAULT_RESET_INTERVAL = 180_000; // 3 minutes
 
@@ -16,11 +16,15 @@ const DEFAULT_RESET_INTERVAL = 180_000; // 3 minutes
 export class CooldownState {
   private activeFullIndex = 0;
   private lastReset: number;
+  private readonly cfg: { modelResetInterval: number };
+  private readonly now: () => number;
 
   constructor(
-    private readonly cfg: { modelResetInterval: number },
-    private readonly now: () => number = Date.now,
+    cfg: { modelResetInterval: number },
+    now: () => number = Date.now
   ) {
+    this.cfg = cfg;
+    this.now = now;
     this.lastReset = now();
   }
 
@@ -48,16 +52,24 @@ export class CooldownState {
   advanceTo(fullIndex: number): void {
     if (fullIndex !== this.activeFullIndex) {
       this.activeFullIndex = fullIndex;
-      if (fullIndex !== 0) this.lastReset = this.now();
+      if (fullIndex !== 0) {
+        this.lastReset = this.now();
+      }
     }
   }
 }
 
 /** Normalize the `cooldown` option to a concrete config, or `undefined` when off. */
 export function resolveCooldown(
-  opt?: CooldownConfig | boolean,
+  opt?: CooldownConfig | boolean
 ): { modelResetInterval: number } | undefined {
-  if (!opt) return undefined;
-  if (opt === true) return { modelResetInterval: DEFAULT_RESET_INTERVAL };
-  return { modelResetInterval: opt.modelResetInterval ?? DEFAULT_RESET_INTERVAL };
+  if (!opt) {
+    return;
+  }
+  if (opt === true) {
+    return { modelResetInterval: DEFAULT_RESET_INTERVAL };
+  }
+  return {
+    modelResetInterval: opt.modelResetInterval ?? DEFAULT_RESET_INTERVAL,
+  };
 }

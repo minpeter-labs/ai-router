@@ -1,8 +1,8 @@
-import { isAbortError } from '@ai-sdk/provider-utils';
+import { isAbortError } from "@ai-sdk/provider-utils";
 
-import type { ShouldRetryThisError } from './types';
+import type { ShouldRetryThisError } from "./types";
 
-export type { ShouldRetryThisError } from './types';
+export type { ShouldRetryThisError } from "./types";
 
 /**
  * Status codes that are positively RETRYABLE (transient/capacity/auth-refresh
@@ -13,7 +13,9 @@ const RETRYABLE_STATUS = new Set([401, 403, 408, 409, 413, 429, 498]);
 
 /** Only accept a finite number — never coerce a numeric string (e.g. 'ECONNRESET'). */
 function pickNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 /**
@@ -22,7 +24,9 @@ function pickNumber(value: unknown): number | undefined {
  * classifier never reads.
  */
 function statusCodeOf(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
+  if (typeof error !== "object" || error === null) {
+    return;
+  }
   const e = error as Record<string, unknown>;
   return pickNumber(e.statusCode ?? e.status);
 }
@@ -43,17 +47,24 @@ function safeStringify(value: unknown): string {
  * openai-compatible provider may deliver an `Error`, a plain string, or an
  * arbitrary object — so this must cope with all of them.
  */
-export function normalizeError(error: unknown): { statusCode?: number; message: string } {
-  if (error == null) return { message: '' };
-  if (typeof error === 'string') return { message: error.toLowerCase() };
-  if (typeof error === 'object') {
+export function normalizeError(error: unknown): {
+  statusCode?: number;
+  message: string;
+} {
+  if (error == null) {
+    return { message: "" };
+  }
+  if (typeof error === "string") {
+    return { message: error.toLowerCase() };
+  }
+  if (typeof error === "object") {
     const e = error as Record<string, unknown>;
     const statusCode = pickNumber(e.statusCode ?? e.status);
     const message =
-      typeof e.message === 'string' && e.message.length > 0
+      typeof e.message === "string" && e.message.length > 0
         ? e.message.toLowerCase()
         : safeStringify(error).toLowerCase();
-    return statusCode != null ? { statusCode, message } : { message };
+    return statusCode == null ? { message } : { statusCode, message };
   }
   return { message: String(error).toLowerCase() };
 }
@@ -82,25 +93,36 @@ export function normalizeError(error: unknown): { statusCode?: number; message: 
  */
 export function defaultShouldRetryThisError(error: unknown): boolean {
   // A caller-initiated abort / timeout must not fan out to other candidates.
-  if (isAbortError(error)) return false;
+  if (isAbortError(error)) {
+    return false;
+  }
 
   const statusCode = statusCodeOf(error);
 
   if (statusCode != null) {
-    if (RETRYABLE_STATUS.has(statusCode) || statusCode >= 500) return true;
-    if (statusCode >= 400 && statusCode < 500) return false;
+    if (RETRYABLE_STATUS.has(statusCode) || statusCode >= 500) {
+      return true;
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      return false;
+    }
   }
 
   return true;
 }
 
 /** Resolve the classifier to use: the caller's hook, or the default. */
-export function resolveShouldRetry(hook?: ShouldRetryThisError): ShouldRetryThisError {
+export function resolveShouldRetry(
+  hook?: ShouldRetryThisError
+): ShouldRetryThisError {
   return hook ?? defaultShouldRetryThisError;
 }
 
 /** Run a classifier defensively — a throw inside it degrades to "do not retry". */
-export function safeShouldRetry(shouldRetry: ShouldRetryThisError, error: unknown): boolean {
+export function safeShouldRetry(
+  shouldRetry: ShouldRetryThisError,
+  error: unknown
+): boolean {
   try {
     return shouldRetry(error);
   } catch {
@@ -123,13 +145,15 @@ export function surfaceFailure(errors: unknown[], logicalId: string): unknown {
   if (errors.length === 1) {
     return errors[0];
   }
-  const last = errors[errors.length - 1];
+  const last = errors.at(-1);
   const lastMessage =
-    last != null && typeof last === 'object' && typeof (last as { message?: unknown }).message === 'string'
+    last != null &&
+    typeof last === "object" &&
+    typeof (last as { message?: unknown }).message === "string"
       ? (last as { message: string }).message
       : String(last);
   return new AggregateError(
     errors,
-    `ai-router: all ${errors.length} candidates for "${logicalId}" failed; last error: ${lastMessage}`,
+    `ai-router: all ${errors.length} candidates for "${logicalId}" failed; last error: ${lastMessage}`
   );
 }

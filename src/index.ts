@@ -1,18 +1,18 @@
-export { createRouter } from './core/router';
-export { detectModalities } from './core/modality';
+export { detectModalities } from "./core/modality";
 export {
   defaultShouldRetryThisError,
   normalizeError,
   surfaceFailure,
-} from './core/retry';
+} from "./core/retry";
+export { createRouter } from "./core/router";
 export type {
+  CooldownConfig,
+  CreateRouterOptions,
   Modality,
+  OnRouterError,
   ProviderEntry,
   ProviderEntryFactory,
   ProviderEntryInstance,
   ProviderFactory,
-  CreateRouterOptions,
-  OnRouterError,
   ShouldRetryThisError,
-  CooldownConfig,
-} from './core/types';
+} from "./core/types";

@@ -3,13 +3,13 @@ import type {
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamResult,
-} from '@ai-sdk/provider';
-import type { LanguageModel } from 'ai';
+} from "@ai-sdk/provider";
+import type { LanguageModel } from "ai";
 
-import { CooldownState, resolveCooldown } from './cooldown';
-import { detectModalities, supportsAll } from './modality';
-import { resolveShouldRetry, safeShouldRetry, surfaceFailure } from './retry';
-import { wrapStreamResult, type ResolvedEntry } from './stream';
+import { CooldownState, resolveCooldown } from "./cooldown";
+import { detectModalities, supportsAll } from "./modality";
+import { resolveShouldRetry, safeShouldRetry, surfaceFailure } from "./retry";
+import { type ResolvedEntry, wrapStreamResult } from "./stream";
 import type {
   CreateRouterOptions,
   Modality,
@@ -18,30 +18,31 @@ import type {
   ProviderEntryFactory,
   ProviderEntryInstance,
   ShouldRetryThisError,
-} from './types';
+} from "./types";
 
 /**
  * A candidate entry normalized to a single internal shape, regardless of which
  * of the three accepted `ProviderEntry` forms the user wrote.
  */
 interface NormalizedEntry {
-  /** Declared modalities, or `undefined` for a universal (catch-all) candidate. */
-  supports?: Modality[];
-  /** Produce the raw model (calls the factory, or returns the captured instance). */
-  raw: () => LanguageModel;
-  /** The user's original entry — surfaced verbatim on `onError`. */
-  original: ProviderEntry;
   /** Model id for the fail-fast error message (factory form only). */
   label?: string;
+  /** The user's original entry — surfaced verbatim on `onError`. */
+  original: ProviderEntry;
+  /** Produce the raw model (calls the factory, or returns the captured instance). */
+  raw: () => LanguageModel;
+  /** Declared modalities, or `undefined` for a universal (catch-all) candidate. */
+  supports?: Modality[];
 }
 
 /** Duck-type a value as a v4 `LanguageModel` (a bare instance candidate). */
 function isLanguageModelV4(value: unknown): value is LanguageModelV4 {
   return (
-    typeof value === 'object' &&
+    typeof value === "object" &&
     value !== null &&
-    (value as { specificationVersion?: unknown }).specificationVersion === 'v4' &&
-    typeof (value as { doStream?: unknown }).doStream === 'function'
+    (value as { specificationVersion?: unknown }).specificationVersion ===
+      "v4" &&
+    typeof (value as { doStream?: unknown }).doStream === "function"
   );
 }
 
@@ -53,22 +54,29 @@ function normalizeEntry(entry: ProviderEntry): NormalizedEntry {
   }
   // (2) Instance-object form: `{ model: <v4 model>, supports? }`.
   const candidate = entry as ProviderEntryFactory | ProviderEntryInstance;
-  if (candidate.model !== null && typeof candidate.model === 'object') {
+  if (candidate.model !== null && typeof candidate.model === "object") {
     const instance = candidate as ProviderEntryInstance;
-    return { supports: instance.supports, original: entry, raw: () => instance.model };
+    return {
+      supports: instance.supports,
+      original: entry,
+      raw: () => instance.model,
+    };
   }
   // (3) Factory form: `{ provider, model: string, supports? }`.
   const factory = candidate as ProviderEntryFactory;
   return {
     supports: factory.supports,
     original: entry,
-    label: typeof factory.model === 'string' ? factory.model : undefined,
+    label: typeof factory.model === "string" ? factory.model : undefined,
     raw: () => {
       // Guard the (untyped JS) misuse where `model` is missing/not a string, so
       // it fails with a clear message instead of `provider(undefined)`.
-      if (typeof factory.provider !== 'function' || typeof factory.model !== 'string') {
+      if (
+        typeof factory.provider !== "function" ||
+        typeof factory.model !== "string"
+      ) {
         throw new Error(
-          'ai-router: a factory entry requires a `provider` function and a string `model`',
+          "ai-router: a factory entry requires a `provider` function and a string `model`"
         );
       }
       return factory.provider(factory.model);
@@ -93,8 +101,8 @@ function normalizeEntry(entry: ProviderEntry): NormalizedEntry {
  * identical option/result shapes, so no transformation is needed.
  */
 class RouterLanguageModel implements LanguageModelV4 {
-  readonly specificationVersion = 'v4' as const;
-  readonly provider = 'router';
+  readonly specificationVersion = "v4" as const;
+  readonly provider = "router";
   readonly modelId: string;
 
   private readonly normalized: NormalizedEntry[];
@@ -106,9 +114,13 @@ class RouterLanguageModel implements LanguageModelV4 {
   /** Cache of instantiated models, keyed by candidate index. */
   private readonly modelCache = new Map<number, LanguageModelV4>();
   /** Memoized conservative `supportedUrls` (computed once per instance). */
-  private supportedUrlsCache?: LanguageModelV4['supportedUrls'];
+  private supportedUrlsCache?: LanguageModelV4["supportedUrls"];
 
-  constructor(logicalId: string, entries: ProviderEntry[], options: CreateRouterOptions) {
+  constructor(
+    logicalId: string,
+    entries: ProviderEntry[],
+    options: CreateRouterOptions
+  ) {
     this.modelId = logicalId;
     this.normalized = entries.map(normalizeEntry);
     this.onError = options.onError;
@@ -126,17 +138,20 @@ class RouterLanguageModel implements LanguageModelV4 {
    * passed through only if all candidates handle it natively; otherwise the SDK
    * inlines it (which any candidate accepts). Computed once and memoized.
    */
-  get supportedUrls(): LanguageModelV4['supportedUrls'] {
-    return (this.supportedUrlsCache ??= this.computeSupportedUrls());
+  get supportedUrls(): LanguageModelV4["supportedUrls"] {
+    this.supportedUrlsCache ??= this.computeSupportedUrls();
+    return this.supportedUrlsCache;
   }
 
-  private computeSupportedUrls(): LanguageModelV4['supportedUrls'] {
+  private computeSupportedUrls(): LanguageModelV4["supportedUrls"] {
     // With multiple candidates the router cannot know which one will serve the
     // request, so it conservatively reports NO native URL support — the SDK then
     // downloads + inlines every URL, which any candidate accepts. A lone
     // candidate can safely report its own support. Either way, a broken / non-v4
     // first entry must not abort call setup (read before any fallback runs).
-    if (this.normalized.length !== 1) return {};
+    if (this.normalized.length !== 1) {
+      return {};
+    }
     try {
       return this.instantiate(0).supportedUrls;
     } catch {
@@ -145,7 +160,7 @@ class RouterLanguageModel implements LanguageModelV4 {
   }
 
   async doGenerate(
-    options: LanguageModelV4CallOptions,
+    options: LanguageModelV4CallOptions
   ): Promise<LanguageModelV4GenerateResult> {
     const { candidates, startIndex } = this.selectCandidates(options);
     this.assertHasCandidate(candidates);
@@ -158,14 +173,25 @@ class RouterLanguageModel implements LanguageModelV4 {
         this.commitSurvivor(candidate.fullIndex, errors.length > 0);
         return result;
       } catch (error) {
-        if (!this.handleFailure(error, candidate, k, candidates, errors, 'generate')) break;
+        if (
+          !this.handleFailure(
+            error,
+            candidate,
+            k,
+            candidates,
+            errors,
+            "generate"
+          )
+        ) {
+          break;
+        }
       }
     }
     throw surfaceFailure(errors, this.modelId);
   }
 
   async doStream(
-    options: LanguageModelV4CallOptions,
+    options: LanguageModelV4CallOptions
   ): Promise<LanguageModelV4StreamResult> {
     const { candidates, startIndex } = this.selectCandidates(options);
     this.assertHasCandidate(candidates);
@@ -184,7 +210,18 @@ class RouterLanguageModel implements LanguageModelV4 {
         // arrive AFTER it opens are handled inside wrapStreamResult.
         result = await candidate.model.doStream(options);
       } catch (error) {
-        if (!this.handleFailure(error, candidate, k, candidates, errors, 'stream-open')) break;
+        if (
+          !this.handleFailure(
+            error,
+            candidate,
+            k,
+            candidates,
+            errors,
+            "stream-open"
+          )
+        ) {
+          break;
+        }
         continue;
       }
       return wrapStreamResult({
@@ -213,7 +250,7 @@ class RouterLanguageModel implements LanguageModelV4 {
     index: number,
     candidates: ResolvedEntry[],
     errors: unknown[],
-    phase: 'generate' | 'stream-open',
+    phase: "generate" | "stream-open"
   ): boolean {
     errors.push(error);
     const retry = safeShouldRetry(this.shouldRetry, error);
@@ -242,21 +279,27 @@ class RouterLanguageModel implements LanguageModelV4 {
    * healthy higher-priority primary. No-op when cooldown is disabled.
    */
   private commitSurvivor(fullIndex: number, hadFailure: boolean): void {
-    if (hadFailure || fullIndex === 0) this.cooldown?.advanceTo(fullIndex);
+    if (hadFailure || fullIndex === 0) {
+      this.cooldown?.advanceTo(fullIndex);
+    }
   }
 
   private assertHasCandidate(candidates: ResolvedEntry[]): void {
     if (candidates.length === 0) {
       throw new Error(
-        `ai-router: no candidate for "${this.modelId}" supports the requested input modalities`,
+        `ai-router: no candidate for "${this.modelId}" supports the requested input modalities`
       );
     }
   }
 
   /** Lazily instantiate (and cache) the model for a candidate index. */
   private instantiate(index: number): LanguageModelV4 {
-    // Presence check (not truthiness) so a falsy model could never be re-created.
-    if (this.modelCache.has(index)) return this.modelCache.get(index)!;
+    // Cached models are always defined objects, so a present entry short-circuits
+    // without a second Map lookup (and never re-creates a candidate).
+    const cached = this.modelCache.get(index);
+    if (cached !== undefined) {
+      return cached;
+    }
 
     const entry = this.normalized[index];
     const model = entry.raw();
@@ -266,9 +309,9 @@ class RouterLanguageModel implements LanguageModelV4 {
     // fallback as an opaque error.
     if (!isLanguageModelV4(model)) {
       throw new Error(
-        entry.label !== undefined
-          ? `ai-router: provider for "${this.modelId}" (model "${entry.label}") did not return a v4 LanguageModel`
-          : `ai-router: entry for "${this.modelId}" did not provide a v4 LanguageModel`,
+        entry.label === undefined
+          ? `ai-router: entry for "${this.modelId}" did not provide a v4 LanguageModel`
+          : `ai-router: provider for "${this.modelId}" (model "${entry.label}") did not return a v4 LanguageModel`
       );
     }
     this.modelCache.set(index, model);
@@ -280,9 +323,10 @@ class RouterLanguageModel implements LanguageModelV4 {
    * the full-array index), and compute the start position — candidate 0 by
    * default, or the sticky survivor when cooldown is enabled.
    */
-  private selectCandidates(
-    options: LanguageModelV4CallOptions,
-  ): { candidates: ResolvedEntry[]; startIndex: number } {
+  private selectCandidates(options: LanguageModelV4CallOptions): {
+    candidates: ResolvedEntry[];
+    startIndex: number;
+  } {
     const required = detectModalities(options.prompt);
     const candidates: ResolvedEntry[] = [];
     const router = this;
@@ -311,7 +355,9 @@ class RouterLanguageModel implements LanguageModelV4 {
       // modality-filtered set. If it was filtered out, re-probe from the top
       // rather than skipping forward to a later candidate (which would silently
       // bypass a healthy higher-priority candidate for this modality).
-      const pos = candidates.findIndex((candidate) => candidate.fullIndex === active);
+      const pos = candidates.findIndex(
+        (candidate) => candidate.fullIndex === active
+      );
       startIndex = pos === -1 ? 0 : pos;
     }
     return { candidates, startIndex };
@@ -338,7 +384,7 @@ class RouterLanguageModel implements LanguageModelV4 {
  * await streamText({ model: route('chat'), prompt: 'hello' });
  */
 export function createRouter(
-  options: CreateRouterOptions,
+  options: CreateRouterOptions
 ): (logicalId: string) => LanguageModel {
   const { models } = options;
 
@@ -348,7 +394,9 @@ export function createRouter(
       throw new Error(`ai-router: unknown model id "${logicalId}"`);
     }
     if (entries.length === 0) {
-      throw new Error(`ai-router: model id "${logicalId}" has no provider entries`);
+      throw new Error(
+        `ai-router: model id "${logicalId}" has no provider entries`
+      );
     }
     return new RouterLanguageModel(logicalId, entries, options);
   };
