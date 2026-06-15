@@ -106,6 +106,36 @@ describe('createFriendli', () => {
     expect(captured.body.chat_template_kwargs).toEqual({ thinking: true });
     expect(captured.body.reasoning_effort).toBeUndefined();
   });
+
+  it("enables thinking from a plain top-level reasoning: 'high'", async () => {
+    const { fetch, captured } = captureFetch();
+    const friendli = createFriendli({ apiKey: 'k', fetch });
+
+    await generateText({ model: friendli('m'), prompt: 'hi', reasoning: 'high' });
+
+    expect(captured.body.chat_template_kwargs).toEqual({ thinking: true });
+    expect(captured.body.reasoning_effort).toBeUndefined();
+  });
+
+  it("disables thinking from a plain top-level reasoning: 'none'", async () => {
+    const { fetch, captured } = captureFetch();
+    const friendli = createFriendli({ apiKey: 'k', fetch });
+
+    await generateText({ model: friendli('m'), prompt: 'hi', reasoning: 'none' });
+
+    expect(captured.body.chat_template_kwargs).toEqual({ thinking: false });
+    expect(captured.body.reasoning_effort).toBeUndefined();
+  });
+
+  it('leaves reasoning fields off the body when no reasoning is requested', async () => {
+    const { fetch, captured } = captureFetch();
+    const friendli = createFriendli({ apiKey: 'k', fetch });
+
+    await generateText({ model: friendli('m'), prompt: 'hi' });
+
+    expect('chat_template_kwargs' in captured.body).toBe(false);
+    expect(captured.body.reasoning_effort).toBeUndefined();
+  });
 });
 
 describe('createOpenRouter', () => {
@@ -163,6 +193,16 @@ describe('createOpenRouter', () => {
     });
 
     expect(captured.body.reasoning).toEqual({ enabled: true });
+    expect(captured.body.reasoning_effort).toBeUndefined();
+  });
+
+  it("disables reasoning from a plain top-level reasoning: 'none'", async () => {
+    const { fetch, captured } = captureFetch();
+    const openrouter = createOpenRouter({ apiKey: 'k', fetch });
+
+    await generateText({ model: openrouter('m'), prompt: 'hi', reasoning: 'none' });
+
+    expect(captured.body.reasoning).toEqual({ enabled: false });
     expect(captured.body.reasoning_effort).toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { translateReasoning } from './reasoning';
+import { reasoningMiddleware, translateReasoning } from './reasoning';
 
 // Pure unit tests for translateReasoning. No AI SDK needed — it's a plain
 // body-in / body-out transform.
@@ -200,5 +200,84 @@ describe('translateReasoning', () => {
         expect(out).toEqual(input);
       });
     }
+  });
+});
+
+// Unit tests for the `reasoningMiddleware` transformParams hook. It runs on the
+// call options (where `reasoning` still carries 'none') and promotes that value
+// into `providerOptions.<name>.reasoningEffort` so the downstream body keeps it.
+describe('reasoningMiddleware', () => {
+  const transform = (params: Record<string, any>, name = 'friendli') => {
+    const mw = reasoningMiddleware(name);
+    // transformParams is the only hook this middleware defines.
+    return mw.transformParams!({
+      params: params as any,
+      type: 'generate',
+      model: {} as any,
+    });
+  };
+
+  for (const reasoning of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const) {
+    it(`promotes reasoning '${reasoning}' into providerOptions.<name>.reasoningEffort`, async () => {
+      const out = await transform({ reasoning });
+      expect(out.providerOptions).toEqual({ friendli: { reasoningEffort: reasoning } });
+      // The original `reasoning` option is left in place; providerOptions wins downstream.
+      expect(out.reasoning).toBe(reasoning);
+    });
+  }
+
+  it('uses the provider name as the providerOptions key', async () => {
+    const out = await transform({ reasoning: 'none' }, 'openrouter');
+    expect(out.providerOptions).toEqual({ openrouter: { reasoningEffort: 'none' } });
+  });
+
+  it('merges into existing providerOptions for other providers', async () => {
+    const out = await transform({
+      reasoning: 'high',
+      providerOptions: { openrouter: { somethingElse: true } },
+    });
+    expect(out.providerOptions).toEqual({
+      openrouter: { somethingElse: true },
+      friendli: { reasoningEffort: 'high' },
+    });
+  });
+
+  it('preserves other keys already under the same provider', async () => {
+    const out = await transform({
+      reasoning: 'low',
+      providerOptions: { friendli: { user: 'u' } },
+    });
+    expect(out.providerOptions).toEqual({
+      friendli: { user: 'u', reasoningEffort: 'low' },
+    });
+  });
+
+  it('does not clobber an explicit reasoningEffort', async () => {
+    const params = {
+      reasoning: 'high',
+      providerOptions: { friendli: { reasoningEffort: 'none' } },
+    };
+    const out = await transform(params);
+    expect(out.providerOptions).toEqual({ friendli: { reasoningEffort: 'none' } });
+    // Returned verbatim — nothing to promote.
+    expect(out).toBe(params);
+  });
+
+  for (const reasoning of [undefined, 'provider-default'] as const) {
+    it(`leaves params untouched when reasoning is ${reasoning ?? 'absent'}`, async () => {
+      const params = reasoning === undefined ? { foo: 1 } : { reasoning, foo: 1 };
+      const out = await transform(params);
+      expect(out).toBe(params);
+      expect('providerOptions' in out).toBe(false);
+    });
+  }
+
+  it('does not mutate the input params', async () => {
+    const params: Record<string, any> = {
+      reasoning: 'high',
+      providerOptions: { friendli: { user: 'u' } },
+    };
+    await transform(params);
+    expect(params.providerOptions).toEqual({ friendli: { user: 'u' } });
   });
 });

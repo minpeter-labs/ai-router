@@ -1,9 +1,11 @@
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 import {
   createOpenAICompatible,
   type OpenAICompatibleProviderSettings,
 } from '@ai-sdk/openai-compatible';
+import { wrapLanguageModel } from 'ai';
 
-import { translateReasoning } from './reasoning';
+import { reasoningMiddleware, translateReasoning } from './reasoning';
 
 const DEFAULT_BASE_URL = 'https://api.friendli.ai/serverless/v1';
 
@@ -21,20 +23,31 @@ export interface CreateFriendliSettings
 /**
  * Friendli provider built on `@ai-sdk/openai-compatible`.
  *
- * It translates the AI SDK's `reasoning_effort` into Friendli's
- * `chat_template_kwargs.thinking` (boolean) and strips the foreign field.
+ * The `reasoning` option drives Friendli's `chat_template_kwargs.thinking`
+ * (boolean) for every level, on or off:
+ *  - `reasoning: 'low' | 'medium' | 'high' | …` -> `thinking: true`
+ *  - `reasoning: 'none'`                         -> `thinking: false`
  *
  * @example
  * const friendli = createFriendli();
- * await streamText({ model: friendli('K2-Instruct'), reasoning: 'high', prompt: '...' });
+ * await streamText({ model: friendli('moonshotai/Kimi-K2.5'), reasoning: 'high', prompt: '...' });
  */
-export function createFriendli(settings: CreateFriendliSettings = {}) {
+export function createFriendli(
+  settings: CreateFriendliSettings = {},
+): (modelId: string) => LanguageModelV4 {
   const { apiKey, baseURL, ...rest } = settings;
-  return createOpenAICompatible({
+  const provider = createOpenAICompatible({
     ...rest,
     name: 'friendli',
     baseURL: baseURL ?? DEFAULT_BASE_URL,
     apiKey: apiKey ?? process.env.FRIENDLI_TOKEN,
     transformRequestBody: translateReasoning('friendli'),
   });
+  // Wrap each model so a top-level `reasoning: 'none'` survives down to the body
+  // (the AI SDK otherwise drops it before `transformRequestBody` can see it).
+  return (modelId: string) =>
+    wrapLanguageModel({
+      model: provider(modelId),
+      middleware: reasoningMiddleware('friendli'),
+    });
 }

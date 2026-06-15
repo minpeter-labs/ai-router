@@ -1,9 +1,11 @@
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 import {
   createOpenAICompatible,
   type OpenAICompatibleProviderSettings,
 } from '@ai-sdk/openai-compatible';
+import { wrapLanguageModel } from 'ai';
 
-import { translateReasoning } from './reasoning';
+import { reasoningMiddleware, translateReasoning } from './reasoning';
 
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -21,20 +23,31 @@ export interface CreateOpenRouterSettings
 /**
  * OpenRouter provider built on `@ai-sdk/openai-compatible`.
  *
- * It translates the AI SDK's `reasoning_effort` into OpenRouter's
- * `reasoning.enabled` (boolean) and strips the foreign field.
+ * The `reasoning` option drives OpenRouter's `reasoning.enabled` (boolean) for
+ * every level, on or off:
+ *  - `reasoning: 'low' | 'medium' | 'high' | …` -> `reasoning.enabled: true`
+ *  - `reasoning: 'none'`                         -> `reasoning.enabled: false`
  *
  * @example
  * const openrouter = createOpenRouter();
- * await streamText({ model: openrouter('moonshotai/kimi-k2'), reasoning: 'high', prompt: '...' });
+ * await streamText({ model: openrouter('moonshotai/kimi-k2.5'), reasoning: 'high', prompt: '...' });
  */
-export function createOpenRouter(settings: CreateOpenRouterSettings = {}) {
+export function createOpenRouter(
+  settings: CreateOpenRouterSettings = {},
+): (modelId: string) => LanguageModelV4 {
   const { apiKey, baseURL, ...rest } = settings;
-  return createOpenAICompatible({
+  const provider = createOpenAICompatible({
     ...rest,
     name: 'openrouter',
     baseURL: baseURL ?? DEFAULT_BASE_URL,
     apiKey: apiKey ?? process.env.OPENROUTER_API_KEY,
     transformRequestBody: translateReasoning('openrouter'),
   });
+  // Wrap each model so a top-level `reasoning: 'none'` survives down to the body
+  // (the AI SDK otherwise drops it before `transformRequestBody` can see it).
+  return (modelId: string) =>
+    wrapLanguageModel({
+      model: provider(modelId),
+      middleware: reasoningMiddleware('openrouter'),
+    });
 }

@@ -1,3 +1,5 @@
+import type { LanguageModelMiddleware } from 'ai';
+
 /**
  * Reasoning dialect for a downstream provider.
  *
@@ -22,11 +24,12 @@ export type ReasoningDialect = 'friendli' | 'openrouter';
  * If no reasoning was requested (`reasoning_effort` absent), the body is
  * returned unchanged.
  *
- * NOTE on disabling: the AI SDK collapses a top-level `reasoning: 'none'` to an
- * absent `reasoning_effort` before this hook runs, so `reasoning: 'none'` is a
- * no-op (reasoning stays at the provider default). To explicitly disable, pass
- * `providerOptions.<provider>.reasoningEffort: 'none'`, which reaches here as
- * `reasoning_effort: 'none'`.
+ * The AI SDK collapses a top-level `reasoning: 'none'` to an absent
+ * `reasoning_effort` before this hook runs, so `'none'` would never reach here
+ * on its own. {@link reasoningMiddleware} promotes the call-level `reasoning`
+ * option (which still carries `'none'`) back into
+ * `providerOptions.<provider>.reasoningEffort`, so disabling works through the
+ * plain `reasoning: 'none'` option.
  */
 export function translateReasoning(
   dialect: ReasoningDialect,
@@ -48,5 +51,48 @@ export function translateReasoning(
     }
 
     return body;
+  };
+}
+
+/**
+ * Middleware that lets the plain `reasoning` option control reasoning end to
+ * end — including disabling it.
+ *
+ * `getArgs` in `@ai-sdk/openai-compatible` turns a call-level `reasoning` into a
+ * body `reasoning_effort` for every level EXCEPT `'none'`, which it silently
+ * drops. By the time {@link translateReasoning} sees the body, that `'none'`
+ * intent is gone.
+ *
+ * This `transformParams` hook runs earlier, on the call options, where
+ * `reasoning` still holds its original value. It copies that value into
+ * `providerOptions.<name>.reasoningEffort`, which `getArgs` always forwards to
+ * the body as `reasoning_effort` (including `'none'`). The result then reaches
+ * {@link translateReasoning} and is rewritten into the provider's native field.
+ *
+ * Precedence is preserved: an explicit `providerOptions.<name>.reasoningEffort`
+ * is left untouched, and `'provider-default'` / absent reasoning is a no-op so
+ * the provider's own default stands.
+ *
+ * @param name the provider's `providerOptions` key (e.g. `'friendli'`).
+ */
+export function reasoningMiddleware(name: string): LanguageModelMiddleware {
+  return {
+    transformParams: async ({ params }) => {
+      const reasoning = params.reasoning;
+      // Leave the provider default in place when nothing actionable was asked.
+      if (reasoning == null || reasoning === 'provider-default') return params;
+
+      const providerOptions = params.providerOptions ?? {};
+      // An explicit reasoningEffort wins; don't clobber it.
+      if (providerOptions[name]?.reasoningEffort != null) return params;
+
+      return {
+        ...params,
+        providerOptions: {
+          ...providerOptions,
+          [name]: { ...providerOptions[name], reasoningEffort: reasoning },
+        },
+      };
+    },
   };
 }
