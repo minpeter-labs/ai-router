@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { detectModalities, supportsAll } from './modality';
 import type { Modality } from './types';
@@ -16,7 +16,9 @@ function filePart(mediaType: string) {
 }
 
 /** detectModalities returns a Set; assert as a sorted array for determinism. */
-function sortedModalities(prompt: Parameters<typeof detectModalities>[0]): Modality[] {
+function sortedModalities(
+  prompt: Parameters<typeof detectModalities>[0],
+): Modality[] {
   return [...detectModalities(prompt)].sort();
 }
 
@@ -26,19 +28,26 @@ function sorted(mods: Modality[]): Modality[] {
 
 describe('detectModalities', () => {
   it('maps a system message to text', () => {
-    expect(sortedModalities([{ role: 'system', content: 'be nice' }])).toEqual(['text']);
+    expect(sortedModalities([{ role: 'system', content: 'be nice' }])).toEqual([
+      'text',
+    ]);
   });
 
   it('maps a text part to text', () => {
     expect(
-      sortedModalities([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }]),
+      sortedModalities([
+        { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+      ]),
     ).toEqual(['text']);
   });
 
   it('maps a reasoning part to text', () => {
     expect(
       sortedModalities([
-        { role: 'assistant', content: [{ type: 'reasoning', text: 'thinking...' }] },
+        {
+          role: 'assistant',
+          content: [{ type: 'reasoning', text: 'thinking...' }],
+        },
       ]),
     ).toEqual(['text']);
   });
@@ -75,19 +84,25 @@ describe('detectModalities', () => {
 
   it('maps pdf via application/pdf to pdf', () => {
     expect(
-      sortedModalities([{ role: 'user', content: [filePart('application/pdf')] }]),
+      sortedModalities([
+        { role: 'user', content: [filePart('application/pdf')] },
+      ]),
     ).toEqual(['pdf']);
   });
 
   it('maps pdf via application/x-pdf to pdf', () => {
     expect(
-      sortedModalities([{ role: 'user', content: [filePart('application/x-pdf')] }]),
+      sortedModalities([
+        { role: 'user', content: [filePart('application/x-pdf')] },
+      ]),
     ).toEqual(['pdf']);
   });
 
   it('ignores unknown media types (application/octet-stream) — not added', () => {
     expect(
-      sortedModalities([{ role: 'user', content: [filePart('application/octet-stream')] }]),
+      sortedModalities([
+        { role: 'user', content: [filePart('application/octet-stream')] },
+      ]),
     ).toEqual([]);
   });
 
@@ -116,7 +131,12 @@ describe('detectModalities', () => {
         {
           role: 'assistant',
           content: [
-            { type: 'tool-call', toolCallId: 't1', toolName: 'lookup', input: { q: 'x' } },
+            {
+              type: 'tool-call',
+              toolCallId: 't1',
+              toolName: 'lookup',
+              input: { q: 'x' },
+            },
           ],
         },
         {
@@ -141,7 +161,12 @@ describe('detectModalities', () => {
           role: 'assistant',
           content: [
             { type: 'text', text: 'calling tool' },
-            { type: 'tool-call', toolCallId: 't1', toolName: 'lookup', input: { q: 'x' } },
+            {
+              type: 'tool-call',
+              toolCallId: 't1',
+              toolName: 'lookup',
+              input: { q: 'x' },
+            },
           ],
         },
         {
@@ -155,11 +180,15 @@ describe('detectModalities', () => {
 
 describe('supportsAll', () => {
   it('returns true when required is a subset of supports', () => {
-    expect(supportsAll(['text', 'image', 'pdf'], new Set(['text', 'image']))).toBe(true);
+    expect(
+      supportsAll(['text', 'image', 'pdf'], new Set(['text', 'image'])),
+    ).toBe(true);
   });
 
   it('returns true when required equals supports', () => {
-    expect(supportsAll(['text', 'image'], new Set(['text', 'image']))).toBe(true);
+    expect(supportsAll(['text', 'image'], new Set(['text', 'image']))).toBe(
+      true,
+    );
   });
 
   it('returns false when a required modality is missing from supports', () => {

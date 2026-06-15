@@ -85,7 +85,10 @@ class RouterLanguageModel implements LanguageModelV4 {
   /** Lazily instantiate (and cache) the model for a candidate index. */
   private instantiate(index: number): LanguageModelV4 {
     // Presence check (not truthiness) so a falsy model could never be re-created.
-    if (this.modelCache.has(index)) return this.modelCache.get(index)!;
+    if (this.modelCache.has(index)) {
+      // biome-ignore lint/style/noNonNullAssertion: presence guaranteed by has() above
+      return this.modelCache.get(index)!;
+    }
 
     const entry = this.entries[index];
     const model = entry.provider(entry.model);
@@ -174,7 +177,9 @@ export function createRouter(
       throw new Error(`ai-router: unknown model id "${logicalId}"`);
     }
     if (entries.length === 0) {
-      throw new Error(`ai-router: model id "${logicalId}" has no provider entries`);
+      throw new Error(
+        `ai-router: model id "${logicalId}" has no provider entries`,
+      );
     }
     return new RouterLanguageModel(logicalId, entries, onError);
   };

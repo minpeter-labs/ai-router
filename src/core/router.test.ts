@@ -1,11 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { generateText, streamText } from 'ai';
-import type { LanguageModel } from 'ai';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
+import type { LanguageModel } from 'ai';
+import { generateText, streamText } from 'ai';
 import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
-
-import { createRouter } from './router';
+import { describe, expect, it } from 'vitest';
 import { detectModalities } from './modality';
+import { createRouter } from './router';
 import type { Modality } from './types';
 
 // `route()` is typed as `LanguageModel` (a union that includes a bare model-id
@@ -55,7 +54,11 @@ function streamingModel(parts: string[] = ['Hello', ', world!']) {
         chunks: [
           { type: 'stream-start', warnings: [] },
           { type: 'text-start', id: '1' },
-          ...parts.map((delta) => ({ type: 'text-delta' as const, id: '1', delta })),
+          ...parts.map((delta) => ({
+            type: 'text-delta' as const,
+            id: '1',
+            delta,
+          })),
           { type: 'text-end', id: '1' },
           { type: 'finish', finishReason, usage },
         ],
@@ -104,8 +107,16 @@ describe('detectModalities', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'look' },
-          { type: 'file', mediaType: 'image/png', data: { type: 'url', url: new URL('https://x/y.png') } },
-          { type: 'file', mediaType: 'application/pdf', data: { type: 'url', url: new URL('https://x/y.pdf') } },
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            data: { type: 'url', url: new URL('https://x/y.png') },
+          },
+          {
+            type: 'file',
+            mediaType: 'application/pdf',
+            data: { type: 'url', url: new URL('https://x/y.pdf') },
+          },
         ],
       },
     ]);
@@ -186,9 +197,9 @@ describe('createRouter — fallback', () => {
     });
 
     // The error surfaced is the one from the final candidate, not the first.
-    await expect(generateText({ model: route('chat'), prompt: 'hi' })).rejects.toThrow(
-      'last failure',
-    );
+    await expect(
+      generateText({ model: route('chat'), prompt: 'hi' }),
+    ).rejects.toThrow('last failure');
     expect(a.doGenerateCalls).toHaveLength(1);
     expect(b.doGenerateCalls).toHaveLength(1);
     expect(c.doGenerateCalls).toHaveLength(1);
@@ -198,10 +209,23 @@ describe('createRouter — fallback', () => {
     const primary = failingModel('boom');
     const secondary = okModel('ok');
 
-    const primaryEntry = { provider: () => primary, model: 'p', supports: ['text'] as Modality[] };
-    const secondaryEntry = { provider: () => secondary, model: 's', supports: ['text'] as Modality[] };
+    const primaryEntry = {
+      provider: () => primary,
+      model: 'p',
+      supports: ['text'] as Modality[],
+    };
+    const secondaryEntry = {
+      provider: () => secondary,
+      model: 's',
+      supports: ['text'] as Modality[],
+    };
 
-    const seen: Array<{ logicalId: string; entry: unknown; index: number; error: unknown }> = [];
+    const seen: Array<{
+      logicalId: string;
+      entry: unknown;
+      index: number;
+      error: unknown;
+    }> = [];
 
     const route = createRouter({
       models: { chat: [primaryEntry, secondaryEntry] },
@@ -228,7 +252,11 @@ describe('createRouter — modality filtering', () => {
       models: {
         chat: [
           { provider: () => textOnly, model: 't', supports: ['text'] },
-          { provider: () => imageCapable, model: 'i', supports: ['text', 'image'] },
+          {
+            provider: () => imageCapable,
+            model: 'i',
+            supports: ['text', 'image'],
+          },
         ],
       },
     });
@@ -236,7 +264,10 @@ describe('createRouter — modality filtering', () => {
     const { text } = await generateText({
       model: route('chat'),
       messages: [
-        { role: 'user', content: [{ type: 'text', text: 'describe' }, imagePart] },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'describe' }, imagePart],
+        },
       ],
     });
 
@@ -254,7 +285,11 @@ describe('createRouter — modality filtering', () => {
       models: {
         chat: [
           { provider: () => textModel, model: 't', supports: ['text'] },
-          { provider: () => imageModel, model: 'i', supports: ['text', 'image'] },
+          {
+            provider: () => imageModel,
+            model: 'i',
+            supports: ['text', 'image'],
+          },
         ],
       },
     });
@@ -306,10 +341,14 @@ describe('createRouter — streaming', () => {
   it('streams via the routed model', async () => {
     const model = streamingModel(['Hello', ', world!']);
     const route = createRouter({
-      models: { chat: [{ provider: () => model, model: 'm', supports: ['text'] }] },
+      models: {
+        chat: [{ provider: () => model, model: 'm', supports: ['text'] }],
+      },
     });
 
-    const acc = await collectStream(streamText({ model: route('chat'), prompt: 'hi' }));
+    const acc = await collectStream(
+      streamText({ model: route('chat'), prompt: 'hi' }),
+    );
     expect(acc).toBe('Hello, world!');
     expect(model.doStreamCalls).toHaveLength(1);
   });
@@ -329,7 +368,9 @@ describe('createRouter — streaming', () => {
       onError: ({ error }) => errors.push(error),
     });
 
-    const acc = await collectStream(streamText({ model: route('chat'), prompt: 'hi' }));
+    const acc = await collectStream(
+      streamText({ model: route('chat'), prompt: 'hi' }),
+    );
     expect(acc).toBe('from secondary');
     expect(primary.doStreamCalls).toHaveLength(1);
     expect(secondary.doStreamCalls).toHaveLength(1);
@@ -346,7 +387,16 @@ describe('createRouter — lazy instantiation & caching', () => {
     let factoryCalls = 0;
     const route = createRouter({
       models: {
-        chat: [{ provider: () => { factoryCalls++; return okModel(); }, model: 'm', supports: ['text'] }],
+        chat: [
+          {
+            provider: () => {
+              factoryCalls++;
+              return okModel();
+            },
+            model: 'm',
+            supports: ['text'],
+          },
+        ],
       },
     });
 
@@ -360,7 +410,16 @@ describe('createRouter — lazy instantiation & caching', () => {
     const model = okModel('cached');
     const route = createRouter({
       models: {
-        chat: [{ provider: () => { factoryCalls++; return model; }, model: 'm', supports: ['text'] }],
+        chat: [
+          {
+            provider: () => {
+              factoryCalls++;
+              return model;
+            },
+            model: 'm',
+            supports: ['text'],
+          },
+        ],
       },
     });
 
@@ -384,8 +443,22 @@ describe('createRouter — lazy instantiation & caching', () => {
     const route = createRouter({
       models: {
         chat: [
-          { provider: () => { primaryBuilt++; return primary; }, model: 'p', supports: ['text'] },
-          { provider: () => { secondaryBuilt++; return secondary; }, model: 's', supports: ['text'] },
+          {
+            provider: () => {
+              primaryBuilt++;
+              return primary;
+            },
+            model: 'p',
+            supports: ['text'],
+          },
+          {
+            provider: () => {
+              secondaryBuilt++;
+              return secondary;
+            },
+            model: 's',
+            supports: ['text'],
+          },
         ],
       },
     });
@@ -411,13 +484,23 @@ describe('createRouter — supportedUrls', () => {
       provider: 'mock',
       modelId: 'first',
       supportedUrls: supported,
-      doGenerate: async () => ({ content: [{ type: 'text', text: 'x' }], finishReason, usage, warnings: [] }),
+      doGenerate: async () => ({
+        content: [{ type: 'text', text: 'x' }],
+        finishReason,
+        usage,
+        warnings: [],
+      }),
     });
     const second = new MockLanguageModelV4({
       provider: 'mock',
       modelId: 'second',
       supportedUrls: { 'audio/*': [/^https:\/\/other\.com\/.*$/] },
-      doGenerate: async () => ({ content: [{ type: 'text', text: 'y' }], finishReason, usage, warnings: [] }),
+      doGenerate: async () => ({
+        content: [{ type: 'text', text: 'y' }],
+        finishReason,
+        usage,
+        warnings: [],
+      }),
     });
 
     const route = createRouter({
@@ -442,10 +525,17 @@ describe('createRouter — supportedUrls', () => {
       provider: 'mock',
       modelId: 'm',
       supportedUrls: {},
-      doGenerate: async () => ({ content: [{ type: 'text', text: 'z' }], finishReason, usage, warnings: [] }),
+      doGenerate: async () => ({
+        content: [{ type: 'text', text: 'z' }],
+        finishReason,
+        usage,
+        warnings: [],
+      }),
     });
     const route = createRouter({
-      models: { chat: [{ provider: () => model, model: 'm', supports: ['text'] }] },
+      models: {
+        chat: [{ provider: () => model, model: 'm', supports: ['text'] }],
+      },
     });
     expect(await asV4(route('chat')).supportedUrls).toEqual({});
   });

@@ -1,9 +1,9 @@
-export { createRouter } from './core/router';
 export { detectModalities } from './core/modality';
+export { createRouter } from './core/router';
 export type {
+  CreateRouterOptions,
   Modality,
+  OnRouterError,
   ProviderEntry,
   ProviderFactory,
-  CreateRouterOptions,
-  OnRouterError,
 } from './core/types';

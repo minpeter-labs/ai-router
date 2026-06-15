@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { generateText } from 'ai';
-
-import { createOpenRouter } from './openrouter';
+import { describe, expect, it } from 'vitest';
 import { captureFetch } from '../test-utils';
+import { createOpenRouter } from './openrouter';
 
 describe('createOpenRouter', () => {
   it('returns a callable provider that builds a language model object', () => {
@@ -66,7 +65,11 @@ describe('createOpenRouter', () => {
     const { fetch, captured } = captureFetch();
     const openrouter = createOpenRouter({ apiKey: 'k', fetch });
 
-    await generateText({ model: openrouter('m'), prompt: 'hi', reasoning: 'none' });
+    await generateText({
+      model: openrouter('m'),
+      prompt: 'hi',
+      reasoning: 'none',
+    });
 
     expect(captured.body.reasoning).toEqual({ enabled: false });
     expect(captured.body.reasoning_effort).toBeUndefined();

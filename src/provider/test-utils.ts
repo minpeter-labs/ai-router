@@ -31,7 +31,7 @@ export function chatCompletionResponse(): Response {
 export interface CapturedRequest {
   url?: string;
   headers: Headers;
-  body?: any;
+  body: Record<string, unknown>;
 }
 
 /**
@@ -42,7 +42,7 @@ export function captureFetch(): {
   fetch: typeof globalThis.fetch;
   captured: CapturedRequest;
 } {
-  const captured: CapturedRequest = { headers: new Headers() };
+  const captured: CapturedRequest = { headers: new Headers(), body: {} };
   const fetch: typeof globalThis.fetch = async (input, init) => {
     captured.url =
       typeof input === 'string'

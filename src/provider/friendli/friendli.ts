@@ -1,8 +1,8 @@
-import type { LanguageModelV4 } from '@ai-sdk/provider';
 import {
   createOpenAICompatible,
   type OpenAICompatibleProviderSettings,
 } from '@ai-sdk/openai-compatible';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { wrapLanguageModel } from 'ai';
 
 import { reasoningMiddleware, translateReasoning } from '../../core/reasoning';

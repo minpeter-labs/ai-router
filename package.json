@@ -44,6 +44,10 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "check:ci": "biome ci .",
     "test": "vitest run",
     "test:watch": "vitest",
     "changeset": "changeset",
@@ -60,6 +64,7 @@
   },
   "devDependencies": {
     "@ai-sdk/openai-compatible": "^3.0.0-beta.36",
+    "@biomejs/biome": "2.4.16",
     "@changesets/cli": "^2.27.0",
     "@types/node": "^25.9.3",
     "ai": "^7.0.0-beta.116",
