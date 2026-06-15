@@ -38,6 +38,12 @@
       "import": "./dist/openrouter.js",
       "require": "./dist/openrouter.cjs",
       "default": "./dist/openrouter.js"
+    },
+    "./fusion": {
+      "types": "./dist/fusion.d.ts",
+      "import": "./dist/fusion.js",
+      "require": "./dist/fusion.cjs",
+      "default": "./dist/fusion.js"
     }
   },
   "scripts": {
@@ -81,6 +87,7 @@
     "vercel-ai-sdk",
     "router",
     "fallback",
+    "fusion",
     "llm",
     "openai-compatible",
     "friendli",

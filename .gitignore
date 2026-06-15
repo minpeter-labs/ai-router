@@ -4,3 +4,7 @@ coverage/
 *.log
 .DS_Store
 .turbo/
+.env
+.env.*
+# local-only benchmark harness + results (not part of the published package)
+bench/
