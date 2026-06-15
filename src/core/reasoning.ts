@@ -35,16 +35,17 @@ export function translateReasoning(
   dialect: ReasoningDialect
 ): (args: Record<string, unknown>) => Record<string, unknown> {
   return (args: Record<string, unknown>): Record<string, unknown> => {
-    // Destructure reasoning_effort out so the returned body never carries it
-    // (avoids a mutating `delete`); `rest` is a fresh clone of the other keys.
-    const { reasoning_effort: effort, ...rest } = args;
+    const effort = args.reasoning_effort;
 
+    // No reasoning requested -> return an untouched clone (keeps the key if set).
     if (effort == null) {
-      return { ...args }; // no reasoning requested -> leave untouched
+      return { ...args };
     }
 
+    // Drop reasoning_effort without a mutating `delete`; `body` is a fresh clone
+    // of the remaining keys.
+    const { reasoning_effort: _omit, ...body } = args;
     const enabled = !(effort === "none" || effort === false);
-    const body = rest;
 
     if (dialect === "friendli") {
       body.chat_template_kwargs = {
