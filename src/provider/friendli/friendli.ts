@@ -5,7 +5,10 @@ import {
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 
-import { reasoningMiddleware, translateReasoning } from "../../core/reasoning";
+import {
+  friendliReasoningMiddleware,
+  friendliReasoningTransform,
+} from "./reasoning";
 
 const DEFAULT_BASE_URL = "https://api.friendli.ai/serverless/v1";
 
@@ -41,13 +44,13 @@ export function createFriendli(
     name: "friendli",
     baseURL: baseURL ?? DEFAULT_BASE_URL,
     apiKey: apiKey ?? process.env.FRIENDLI_TOKEN,
-    transformRequestBody: translateReasoning("friendli"),
+    transformRequestBody: friendliReasoningTransform,
   });
   // Wrap each model so a top-level `reasoning: 'none'` survives down to the body
   // (the AI SDK otherwise drops it before `transformRequestBody` can see it).
   return (modelId: string) =>
     wrapLanguageModel({
       model: provider(modelId),
-      middleware: reasoningMiddleware("friendli"),
+      middleware: friendliReasoningMiddleware,
     });
 }

@@ -138,10 +138,10 @@ const chat = route('kimi'); // reuse this instance across requests
 that translate the AI SDK's reasoning request into each provider's native field
 (and strip the foreign `reasoning_effort`):
 
-| Provider   | becomes                                  |
-| ---------- | ---------------------------------------- |
-| Friendli   | `chat_template_kwargs.thinking: boolean` |
-| OpenRouter | `reasoning.enabled: boolean`             |
+| Provider   | becomes                                                 |
+| ---------- | ------------------------------------------------------- |
+| Friendli   | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
+| OpenRouter | `reasoning.enabled: boolean`                            |
 
 ```ts
 // The plain `reasoning` option drives it on AND off — no providerOptions needed.
