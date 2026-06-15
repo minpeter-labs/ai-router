@@ -3,8 +3,8 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
-    friendli: 'src/friendli.ts',
-    openrouter: 'src/openrouter.ts',
+    friendli: 'src/provider/friendli/friendli.ts',
+    openrouter: 'src/provider/openrouter/openrouter.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
