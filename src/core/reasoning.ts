@@ -33,8 +33,8 @@ export type ReasoningDialect = 'friendli' | 'openrouter';
  */
 export function translateReasoning(
   dialect: ReasoningDialect,
-): (args: Record<string, any>) => Record<string, any> {
-  return (args: Record<string, any>): Record<string, any> => {
+): (args: Record<string, unknown>) => Record<string, unknown> {
+  return (args: Record<string, unknown>): Record<string, unknown> => {
     const body = { ...args }; // shallow clone; mutate-and-return
     const effort = body.reasoning_effort;
 
@@ -45,9 +45,15 @@ export function translateReasoning(
     delete body.reasoning_effort;
 
     if (dialect === 'friendli') {
-      body.chat_template_kwargs = { ...body.chat_template_kwargs, thinking: enabled };
+      body.chat_template_kwargs = {
+        ...(body.chat_template_kwargs as Record<string, unknown> | undefined),
+        thinking: enabled,
+      };
     } else {
-      body.reasoning = { ...body.reasoning, enabled };
+      body.reasoning = {
+        ...(body.reasoning as Record<string, unknown> | undefined),
+        enabled,
+      };
     }
 
     return body;

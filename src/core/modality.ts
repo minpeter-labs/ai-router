@@ -42,7 +42,10 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
           const mediaType = part.mediaType.toLowerCase().split(';')[0].trim();
 
           // PDF is application/pdf — special-case before the top-level scan.
-          if (mediaType === 'application/pdf' || mediaType === 'application/x-pdf') {
+          if (
+            mediaType === 'application/pdf' ||
+            mediaType === 'application/x-pdf'
+          ) {
             modalities.add('pdf');
             break;
           }
@@ -71,7 +74,10 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
 /**
  * True iff every modality in `required` is present in the entry's `supports`.
  */
-export function supportsAll(supports: Modality[], required: Set<Modality>): boolean {
+export function supportsAll(
+  supports: Modality[],
+  required: Set<Modality>,
+): boolean {
   for (const modality of required) {
     if (!supports.includes(modality)) return false;
   }

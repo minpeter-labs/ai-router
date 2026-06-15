@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { generateText } from 'ai';
-
-import { createFriendli } from './friendli';
+import { describe, expect, it } from 'vitest';
 import { captureFetch } from '../test-utils';
+import { createFriendli } from './friendli';
 
 describe('createFriendli', () => {
   it('returns a callable provider that builds a language model object', () => {
@@ -68,7 +67,11 @@ describe('createFriendli', () => {
     const { fetch, captured } = captureFetch();
     const friendli = createFriendli({ apiKey: 'k', fetch });
 
-    await generateText({ model: friendli('m'), prompt: 'hi', reasoning: 'high' });
+    await generateText({
+      model: friendli('m'),
+      prompt: 'hi',
+      reasoning: 'high',
+    });
 
     expect(captured.body.chat_template_kwargs).toEqual({ thinking: true });
     expect(captured.body.reasoning_effort).toBeUndefined();
@@ -78,7 +81,11 @@ describe('createFriendli', () => {
     const { fetch, captured } = captureFetch();
     const friendli = createFriendli({ apiKey: 'k', fetch });
 
-    await generateText({ model: friendli('m'), prompt: 'hi', reasoning: 'none' });
+    await generateText({
+      model: friendli('m'),
+      prompt: 'hi',
+      reasoning: 'none',
+    });
 
     expect(captured.body.chat_template_kwargs).toEqual({ thinking: false });
     expect(captured.body.reasoning_effort).toBeUndefined();
