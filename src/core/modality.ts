@@ -30,45 +30,45 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
     }
 
     for (const part of message.content) {
-      switch (part.type) {
-        case 'text':
-        case 'reasoning':
-          modalities.add('text');
-          break;
-
-        case 'file': {
-          // Strip any media-type parameters (e.g. `application/pdf; charset=…`)
-          // before matching so `type/subtype` comparisons stay exact.
-          const mediaType = part.mediaType.toLowerCase().split(';')[0].trim();
-
-          // PDF is application/pdf — special-case before the top-level scan.
-          if (
-            mediaType === 'application/pdf' ||
-            mediaType === 'application/x-pdf'
-          ) {
-            modalities.add('pdf');
-            break;
-          }
-
-          // Normalizes 'image/png', 'image/*' and bare 'image' all to 'image'.
-          const top = getTopLevelMediaType(mediaType);
-          if (top === 'image') modalities.add('image');
-          else if (top === 'video') modalities.add('video');
-          else if (top === 'audio') modalities.add('audio');
-          else if (top === 'text') modalities.add('text');
-          // Unknown top-level types (other application/*) are ignored.
-          break;
+      if (part.type === 'text' || part.type === 'reasoning') {
+        modalities.add('text');
+      } else if (part.type === 'file') {
+        const modality = fileModality(part.mediaType);
+        if (modality !== null) {
+          modalities.add(modality);
         }
-
-        // tool-call / tool-result / reasoning-file / custom / tool-approval-*:
-        // not input modalities for routing — ignore.
-        default:
-          break;
       }
+      // Other part types (tool-call / tool-result / reasoning-file / custom /
+      // tool-approval-*) are not input modalities for routing — ignored.
     }
   }
 
   return modalities;
+}
+
+/**
+ * Map a single file part's media type to a routing modality, or `null` when it
+ * is not one we route on. Extracted from {@link detectModalities} to keep that
+ * scan's nesting (and cognitive complexity) low.
+ */
+function fileModality(rawMediaType: string): Modality | null {
+  // Strip any media-type parameters (e.g. `application/pdf; charset=…`) before
+  // matching so `type/subtype` comparisons stay exact.
+  const mediaType = rawMediaType.toLowerCase().split(';')[0].trim();
+
+  // PDF is application/pdf — special-case before the top-level scan.
+  if (mediaType === 'application/pdf' || mediaType === 'application/x-pdf') {
+    return 'pdf';
+  }
+
+  // Normalizes 'image/png', 'image/*' and bare 'image' all to 'image'.
+  const top = getTopLevelMediaType(mediaType);
+  if (top === 'image' || top === 'video' || top === 'audio' || top === 'text') {
+    return top;
+  }
+
+  // Unknown top-level types (other application/*) are not routed on.
+  return null;
 }
 
 /**
@@ -79,7 +79,9 @@ export function supportsAll(
   required: Set<Modality>,
 ): boolean {
   for (const modality of required) {
-    if (!supports.includes(modality)) return false;
+    if (!supports.includes(modality)) {
+      return false;
+    }
   }
   return true;
 }

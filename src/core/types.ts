@@ -26,10 +26,10 @@ export type ProviderFactory = (modelId: string) => LanguageModel;
  * { provider: createFriendli(), model: 'K2-Instruct', supports: ['text'] }
  */
 export interface ProviderEntry {
-  /** Factory that instantiates the underlying model (e.g. a provider instance). */
-  provider: ProviderFactory;
   /** The provider-specific model id passed to `provider(model)`. */
   model: string;
+  /** Factory that instantiates the underlying model (e.g. a provider instance). */
+  provider: ProviderFactory;
   /** Input modalities this backend can handle. */
   supports: Modality[];
 }

@@ -64,18 +64,20 @@ class RouterLanguageModel implements LanguageModelV4 {
    * candidates we report "no supported URLs".
    */
   get supportedUrls(): LanguageModelV4['supportedUrls'] {
-    if (this.entries.length === 0) return {};
+    if (this.entries.length === 0) {
+      return {};
+    }
     return this.instantiate(0).supportedUrls;
   }
 
-  async doGenerate(
+  doGenerate(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4GenerateResult> {
     const candidates = this.selectCandidates(options);
     return this.run(candidates, (model) => model.doGenerate(options));
   }
 
-  async doStream(
+  doStream(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4StreamResult> {
     const candidates = this.selectCandidates(options);
@@ -84,10 +86,11 @@ class RouterLanguageModel implements LanguageModelV4 {
 
   /** Lazily instantiate (and cache) the model for a candidate index. */
   private instantiate(index: number): LanguageModelV4 {
-    // Presence check (not truthiness) so a falsy model could never be re-created.
-    if (this.modelCache.has(index)) {
-      // biome-ignore lint/style/noNonNullAssertion: presence guaranteed by has() above
-      return this.modelCache.get(index)!;
+    // Cached models are always defined objects, so an undefined lookup means
+    // "not yet instantiated" — one Map read instead of has() + get().
+    const cached = this.modelCache.get(index);
+    if (cached !== undefined) {
+      return cached;
     }
 
     const entry = this.entries[index];

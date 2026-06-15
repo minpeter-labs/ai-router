@@ -192,8 +192,11 @@ describe('translateReasoning', () => {
         const nested =
           dialect === 'friendli' ? { foo: 'bar' } : { max_tokens: 100 };
         const input: Record<string, unknown> = { reasoning_effort: 'low' };
-        if (dialect === 'friendli') input.chat_template_kwargs = nested;
-        else input.reasoning = nested;
+        if (dialect === 'friendli') {
+          input.chat_template_kwargs = nested;
+        } else {
+          input.reasoning = nested;
+        }
 
         const out = transform(input);
 
@@ -223,7 +226,9 @@ describe('reasoningMiddleware', () => {
   const transform = (params: Record<string, unknown>, name = 'friendli') => {
     const { transformParams } = reasoningMiddleware(name);
     // transformParams is the only hook this middleware defines.
-    if (!transformParams) throw new Error('transformParams is not defined');
+    if (!transformParams) {
+      throw new Error('transformParams is not defined');
+    }
     return transformParams({
       params,
       type: 'generate',

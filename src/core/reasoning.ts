@@ -35,14 +35,16 @@ export function translateReasoning(
   dialect: ReasoningDialect,
 ): (args: Record<string, unknown>) => Record<string, unknown> {
   return (args: Record<string, unknown>): Record<string, unknown> => {
-    const body = { ...args }; // shallow clone; mutate-and-return
-    const effort = body.reasoning_effort;
+    // Destructure reasoning_effort out so the returned body never carries it
+    // (avoids a mutating `delete`); `rest` is a fresh clone of the other keys.
+    const { reasoning_effort: effort, ...rest } = args;
 
-    if (effort == null) return body; // no reasoning requested -> leave untouched
+    if (effort == null) {
+      return { ...args }; // no reasoning requested -> leave untouched
+    }
 
     const enabled = !(effort === 'none' || effort === false);
-
-    delete body.reasoning_effort;
+    const body = rest;
 
     if (dialect === 'friendli') {
       body.chat_template_kwargs = {
@@ -83,22 +85,26 @@ export function translateReasoning(
  */
 export function reasoningMiddleware(name: string): LanguageModelMiddleware {
   return {
-    transformParams: async ({ params }) => {
+    transformParams: ({ params }) => {
       const reasoning = params.reasoning;
       // Leave the provider default in place when nothing actionable was asked.
-      if (reasoning == null || reasoning === 'provider-default') return params;
+      if (reasoning == null || reasoning === 'provider-default') {
+        return Promise.resolve(params);
+      }
 
       const providerOptions = params.providerOptions ?? {};
       // An explicit reasoningEffort wins; don't clobber it.
-      if (providerOptions[name]?.reasoningEffort != null) return params;
+      if (providerOptions[name]?.reasoningEffort != null) {
+        return Promise.resolve(params);
+      }
 
-      return {
+      return Promise.resolve({
         ...params,
         providerOptions: {
           ...providerOptions,
           [name]: { ...providerOptions[name], reasoningEffort: reasoning },
         },
-      };
+      });
     },
   };
 }

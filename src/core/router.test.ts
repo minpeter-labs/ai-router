@@ -22,6 +22,12 @@ const usage = {
 };
 const finishReason = { unified: 'stop' as const, raw: 'stop' };
 
+// Regex literals hoisted to module scope (Biome performance/useTopLevelRegex):
+// allocate each matcher once rather than per assertion / per mock construction.
+const NO_CANDIDATE_RE = /no candidate.*modalities/;
+const EXAMPLE_HTTPS_RE = /^https:\/\/example\.com\/.*$/;
+const OTHER_HTTPS_RE = /^https:\/\/other\.com\/.*$/;
+
 function okModel(text = 'Hello, world!') {
   return new MockLanguageModelV4({
     provider: 'mock',
@@ -37,9 +43,7 @@ function okModel(text = 'Hello, world!') {
 
 function failingModel(message = 'simulated API failure') {
   return new MockLanguageModelV4({
-    doGenerate: async () => {
-      throw new Error(message);
-    },
+    doGenerate: () => Promise.reject(new Error(message)),
   });
 }
 
@@ -69,9 +73,7 @@ function streamingModel(parts: string[] = ['Hello', ', world!']) {
 
 function failingStreamModel(message = 'simulated stream failure') {
   return new MockLanguageModelV4({
-    doStream: async () => {
-      throw new Error(message);
-    },
+    doStream: () => Promise.reject(new Error(message)),
   });
 }
 
@@ -85,7 +87,9 @@ const imagePart = {
 
 async function collectStream(result: ReturnType<typeof streamText>) {
   let acc = '';
-  for await (const chunk of result.textStream) acc += chunk;
+  for await (const chunk of result.textStream) {
+    acc += chunk;
+  }
   return acc;
 }
 
@@ -314,7 +318,7 @@ describe('createRouter — modality filtering', () => {
           },
         ],
       }),
-    ).rejects.toThrow(/no candidate.*modalities/);
+    ).rejects.toThrow(NO_CANDIDATE_RE);
 
     // No candidate matched, so nothing was ever called.
     expect(textModel.doGenerateCalls).toHaveLength(0);
@@ -479,7 +483,7 @@ describe('createRouter — lazy instantiation & caching', () => {
 // ---------------------------------------------------------------------------
 describe('createRouter — supportedUrls', () => {
   it('inherits supportedUrls from the FIRST candidate (not the second)', async () => {
-    const supported = { 'image/*': [/^https:\/\/example\.com\/.*$/] };
+    const supported = { 'image/*': [EXAMPLE_HTTPS_RE] };
     const first = new MockLanguageModelV4({
       provider: 'mock',
       modelId: 'first',
@@ -494,7 +498,7 @@ describe('createRouter — supportedUrls', () => {
     const second = new MockLanguageModelV4({
       provider: 'mock',
       modelId: 'second',
-      supportedUrls: { 'audio/*': [/^https:\/\/other\.com\/.*$/] },
+      supportedUrls: { 'audio/*': [OTHER_HTTPS_RE] },
       doGenerate: async () => ({
         content: [{ type: 'text', text: 'y' }],
         finishReason,
