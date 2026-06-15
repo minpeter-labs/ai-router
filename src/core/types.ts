@@ -1,4 +1,4 @@
-import type { LanguageModel } from 'ai';
+import type { LanguageModel } from "ai";
 
 /**
  * Input modalities the router can detect in a prompt and match against a
@@ -10,7 +10,7 @@ import type { LanguageModel } from 'ai';
  * - `audio` — file parts with a top-level `audio` media type.
  * - `pdf`   — file parts with media type `application/pdf` (special-cased).
  */
-export type Modality = 'text' | 'image' | 'video' | 'audio' | 'pdf';
+export type Modality = "text" | "image" | "video" | "audio" | "pdf";
 
 /**
  * Factory that produces a concrete AI SDK language model for a given model id.
@@ -26,10 +26,10 @@ export type ProviderFactory = (modelId: string) => LanguageModel;
  * { provider: createFriendli(), model: 'K2-Instruct', supports: ['text'] }
  */
 export interface ProviderEntry {
-  /** Factory that instantiates the underlying model (e.g. a provider instance). */
-  provider: ProviderFactory;
   /** The provider-specific model id passed to `provider(model)`. */
   model: string;
+  /** Factory that instantiates the underlying model (e.g. a provider instance). */
+  provider: ProviderFactory;
   /** Input modalities this backend can handle. */
   supports: Modality[];
 }

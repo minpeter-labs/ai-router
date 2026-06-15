@@ -1,4 +1,4 @@
-import type { LanguageModelMiddleware } from 'ai';
+import type { LanguageModelMiddleware } from "ai";
 
 /**
  * Reasoning dialect for a downstream provider.
@@ -6,7 +6,7 @@ import type { LanguageModelMiddleware } from 'ai';
  * - `friendli`   -> `chat_template_kwargs.thinking: boolean`
  * - `openrouter` -> `reasoning.enabled: boolean`
  */
-export type ReasoningDialect = 'friendli' | 'openrouter';
+export type ReasoningDialect = "friendli" | "openrouter";
 
 /**
  * Build a `transformRequestBody` hook for `createOpenAICompatible`.
@@ -32,19 +32,22 @@ export type ReasoningDialect = 'friendli' | 'openrouter';
  * plain `reasoning: 'none'` option.
  */
 export function translateReasoning(
-  dialect: ReasoningDialect,
+  dialect: ReasoningDialect
 ): (args: Record<string, unknown>) => Record<string, unknown> {
   return (args: Record<string, unknown>): Record<string, unknown> => {
-    const body = { ...args }; // shallow clone; mutate-and-return
-    const effort = body.reasoning_effort;
+    const effort = args.reasoning_effort;
 
-    if (effort == null) return body; // no reasoning requested -> leave untouched
+    // No reasoning requested -> return an untouched clone (keeps the key if set).
+    if (effort == null) {
+      return { ...args };
+    }
 
-    const enabled = !(effort === 'none' || effort === false);
+    // Drop reasoning_effort without a mutating `delete`; `body` is a fresh clone
+    // of the remaining keys.
+    const { reasoning_effort: _omit, ...body } = args;
+    const enabled = !(effort === "none" || effort === false);
 
-    delete body.reasoning_effort;
-
-    if (dialect === 'friendli') {
+    if (dialect === "friendli") {
       body.chat_template_kwargs = {
         ...(body.chat_template_kwargs as Record<string, unknown> | undefined),
         thinking: enabled,
@@ -83,22 +86,26 @@ export function translateReasoning(
  */
 export function reasoningMiddleware(name: string): LanguageModelMiddleware {
   return {
-    transformParams: async ({ params }) => {
+    transformParams: ({ params }) => {
       const reasoning = params.reasoning;
       // Leave the provider default in place when nothing actionable was asked.
-      if (reasoning == null || reasoning === 'provider-default') return params;
+      if (reasoning == null || reasoning === "provider-default") {
+        return Promise.resolve(params);
+      }
 
       const providerOptions = params.providerOptions ?? {};
       // An explicit reasoningEffort wins; don't clobber it.
-      if (providerOptions[name]?.reasoningEffort != null) return params;
+      if (providerOptions[name]?.reasoningEffort != null) {
+        return Promise.resolve(params);
+      }
 
-      return {
+      return Promise.resolve({
         ...params,
         providerOptions: {
           ...providerOptions,
           [name]: { ...providerOptions[name], reasoningEffort: reasoning },
         },
-      };
+      });
     },
   };
 }
