@@ -6,7 +6,7 @@ import { reasoningMiddleware, translateReasoning } from "./reasoning";
 // body-in / body-out transform.
 
 describe("translateReasoning", () => {
-  describe("friendli dialect (chat_template_kwargs.thinking)", () => {
+  describe("friendli dialect (chat_template_kwargs.{thinking,enable_thinking})", () => {
     const transform = translateReasoning("friendli");
 
     for (const effort of [
@@ -16,50 +16,70 @@ describe("translateReasoning", () => {
       "minimal",
       "xhigh",
     ] as const) {
-      it(`maps reasoning_effort '${effort}' -> thinking=true`, () => {
+      it(`maps reasoning_effort '${effort}' -> thinking/enable_thinking=true`, () => {
         const out = transform({ model: "m", reasoning_effort: effort });
-        expect(out.chat_template_kwargs).toEqual({ thinking: true });
+        expect(out.chat_template_kwargs).toEqual({
+          thinking: true,
+          enable_thinking: true,
+        });
         expect("reasoning_effort" in out).toBe(false);
       });
     }
 
-    it("maps reasoning_effort true -> thinking=true", () => {
+    it("maps reasoning_effort true -> thinking/enable_thinking=true", () => {
       const out = transform({ reasoning_effort: true });
-      expect(out.chat_template_kwargs).toEqual({ thinking: true });
+      expect(out.chat_template_kwargs).toEqual({
+        thinking: true,
+        enable_thinking: true,
+      });
       expect("reasoning_effort" in out).toBe(false);
     });
 
-    it("maps reasoning_effort 'none' -> thinking=false", () => {
+    it("maps reasoning_effort 'none' -> thinking/enable_thinking=false", () => {
       const out = transform({ reasoning_effort: "none" });
-      expect(out.chat_template_kwargs).toEqual({ thinking: false });
+      expect(out.chat_template_kwargs).toEqual({
+        thinking: false,
+        enable_thinking: false,
+      });
       expect("reasoning_effort" in out).toBe(false);
     });
 
-    it("maps reasoning_effort false -> thinking=false", () => {
+    it("maps reasoning_effort false -> thinking/enable_thinking=false", () => {
       const out = transform({ reasoning_effort: false });
-      expect(out.chat_template_kwargs).toEqual({ thinking: false });
+      expect(out.chat_template_kwargs).toEqual({
+        thinking: false,
+        enable_thinking: false,
+      });
       expect("reasoning_effort" in out).toBe(false);
     });
 
     it("merges into an existing chat_template_kwargs, preserving other keys", () => {
       const out = transform({
         reasoning_effort: "high",
-        chat_template_kwargs: { foo: "bar", enable_thinking: 1 },
+        chat_template_kwargs: { foo: "bar" },
       });
       expect(out.chat_template_kwargs).toEqual({
         foo: "bar",
-        enable_thinking: 1,
         thinking: true,
+        enable_thinking: true,
       });
       expect("reasoning_effort" in out).toBe(false);
     });
 
-    it("overrides an existing thinking key in chat_template_kwargs", () => {
+    it("overrides existing thinking / enable_thinking keys in chat_template_kwargs", () => {
       const out = transform({
         reasoning_effort: "none",
-        chat_template_kwargs: { thinking: true, keep: "me" },
+        chat_template_kwargs: {
+          thinking: true,
+          enable_thinking: true,
+          keep: "me",
+        },
       });
-      expect(out.chat_template_kwargs).toEqual({ thinking: false, keep: "me" });
+      expect(out.chat_template_kwargs).toEqual({
+        thinking: false,
+        enable_thinking: false,
+        keep: "me",
+      });
     });
 
     it("does not write a reasoning (openrouter) key", () => {

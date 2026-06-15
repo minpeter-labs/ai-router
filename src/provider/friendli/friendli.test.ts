@@ -49,7 +49,7 @@ describe("createFriendli", () => {
     expect(captured.headers.get("authorization")).toBe("Bearer secret-token");
   });
 
-  it("translates top-level reasoning into chat_template_kwargs.thinking and strips reasoning_effort", async () => {
+  it("translates top-level reasoning into chat_template_kwargs and strips reasoning_effort", async () => {
     const { fetch, captured } = captureFetch();
     const friendli = createFriendli({ apiKey: "k", fetch });
 
@@ -59,7 +59,10 @@ describe("createFriendli", () => {
       providerOptions: { friendli: { reasoningEffort: "high" } },
     });
 
-    expect(captured.body.chat_template_kwargs).toEqual({ thinking: true });
+    expect(captured.body.chat_template_kwargs).toEqual({
+      thinking: true,
+      enable_thinking: true,
+    });
     expect(captured.body.reasoning_effort).toBeUndefined();
   });
 
@@ -73,7 +76,10 @@ describe("createFriendli", () => {
       reasoning: "high",
     });
 
-    expect(captured.body.chat_template_kwargs).toEqual({ thinking: true });
+    expect(captured.body.chat_template_kwargs).toEqual({
+      thinking: true,
+      enable_thinking: true,
+    });
     expect(captured.body.reasoning_effort).toBeUndefined();
   });
 
@@ -87,7 +93,10 @@ describe("createFriendli", () => {
       reasoning: "none",
     });
 
-    expect(captured.body.chat_template_kwargs).toEqual({ thinking: false });
+    expect(captured.body.chat_template_kwargs).toEqual({
+      thinking: false,
+      enable_thinking: false,
+    });
     expect(captured.body.reasoning_effort).toBeUndefined();
   });
 

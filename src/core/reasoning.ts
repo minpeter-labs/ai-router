@@ -3,7 +3,7 @@ import type { LanguageModelMiddleware } from "ai";
 /**
  * Reasoning dialect for a downstream provider.
  *
- * - `friendli`   -> `chat_template_kwargs.thinking: boolean`
+ * - `friendli`   -> `chat_template_kwargs.{thinking, enable_thinking}: boolean`
  * - `openrouter` -> `reasoning.enabled: boolean`
  */
 export type ReasoningDialect = "friendli" | "openrouter";
@@ -48,9 +48,13 @@ export function translateReasoning(
     const enabled = !(effort === "none" || effort === false);
 
     if (dialect === "friendli") {
+      // Friendli's reasoning toggle is model-dependent: most models read
+      // `thinking`, but some (e.g. Gemma 4) read `enable_thinking`. Send both —
+      // a model ignores the field it doesn't recognize.
       body.chat_template_kwargs = {
         ...(body.chat_template_kwargs as Record<string, unknown> | undefined),
         thinking: enabled,
+        enable_thinking: enabled,
       };
     } else {
       body.reasoning = {
