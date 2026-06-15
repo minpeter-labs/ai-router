@@ -73,11 +73,17 @@ function fileModality(rawMediaType: string): Modality | null {
 
 /**
  * True iff every modality in `required` is present in the entry's `supports`.
+ *
+ * An omitted (`undefined`) `supports` means the entry is a universal candidate
+ * that matches ANY modality — it is never filtered out.
  */
 export function supportsAll(
-  supports: Modality[],
+  supports: Modality[] | undefined,
   required: Set<Modality>
 ): boolean {
+  if (supports === undefined) {
+    return true;
+  }
   for (const modality of required) {
     if (!supports.includes(modality)) {
       return false;
