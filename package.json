@@ -1,0 +1,77 @@
+{
+  "name": "@minpeter/ai-router",
+  "version": "0.0.0",
+  "description": "Provider-agnostic, modality-aware language model router with fallback for the Vercel AI SDK.",
+  "type": "module",
+  "license": "MIT",
+  "author": "minpeter <minpeter@vooy.com>",
+  "packageManager": "pnpm@11.3.0",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./friendli": {
+      "types": "./dist/friendli.d.ts",
+      "import": "./dist/friendli.js",
+      "require": "./dist/friendli.cjs",
+      "default": "./dist/friendli.js"
+    },
+    "./openrouter": {
+      "types": "./dist/openrouter.d.ts",
+      "import": "./dist/openrouter.js",
+      "require": "./dist/openrouter.cjs",
+      "default": "./dist/openrouter.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "peerDependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.0-beta.36",
+    "ai": "^7.0.0-beta.116"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "^4.0.0-beta.14",
+    "@ai-sdk/provider-utils": "^5.0.0-beta.30"
+  },
+  "devDependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.0-beta.36",
+    "@changesets/cli": "^2.27.0",
+    "@types/node": "^25.9.3",
+    "ai": "^7.0.0-beta.116",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.3",
+    "vitest": "^3.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ai",
+    "vercel-ai-sdk",
+    "router",
+    "fallback",
+    "llm",
+    "openai-compatible",
+    "friendli",
+    "openrouter"
+  ]
+}

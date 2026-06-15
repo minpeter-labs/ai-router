@@ -1,0 +1,6 @@
+# pnpm 11 reads these settings here (no longer from package.json#pnpm or .npmrc).
+# esbuild (used by tsup + vitest) has a build script; approve it so `pnpm install` exits 0.
+allowBuilds:
+  esbuild: true
+# Skip the implicit pre-run `pnpm install` check before `pnpm run <script>`.
+verifyDepsBeforeRun: false
