@@ -8,7 +8,7 @@ import type { LanguageModel } from 'ai';
 
 import { CooldownState, resolveCooldown } from './cooldown';
 import { detectModalities, supportsAll } from './modality';
-import { resolveShouldRetry, surfaceFailure } from './retry';
+import { resolveShouldRetry, safeShouldRetry, surfaceFailure } from './retry';
 import { wrapStreamResult, type ResolvedEntry } from './stream';
 import type {
   CreateRouterOptions,
@@ -105,6 +105,8 @@ class RouterLanguageModel implements LanguageModelV4 {
 
   /** Cache of instantiated models, keyed by candidate index. */
   private readonly modelCache = new Map<number, LanguageModelV4>();
+  /** Memoized conservative `supportedUrls` (computed once per instance). */
+  private supportedUrlsCache?: LanguageModelV4['supportedUrls'];
 
   constructor(logicalId: string, entries: ProviderEntry[], options: CreateRouterOptions) {
     this.modelId = logicalId;
@@ -117,22 +119,29 @@ class RouterLanguageModel implements LanguageModelV4 {
   }
 
   /**
-   * Inherit `supportedUrls` from the first candidate's model. It may be a plain
-   * object or a Promise; never copy/await it eagerly. If there are no
-   * candidates we report "no supported URLs".
+   * The set of URLs the router can pass through un-downloaded. The AI SDK reads
+   * this ONCE during call setup to decide whether to download+inline a URL or
+   * forward it raw — but it cannot know which candidate will actually serve the
+   * request. So we report only the support COMMON to every candidate: a URL is
+   * passed through only if all candidates handle it natively; otherwise the SDK
+   * inlines it (which any candidate accepts). Computed once and memoized.
    */
   get supportedUrls(): LanguageModelV4['supportedUrls'] {
-    // Inherited from the first candidate that instantiates to a v4 model. This is
-    // read during call setup (before any fallback runs), so a broken / non-v4
-    // first entry must not abort a request that fallback could otherwise serve.
-    for (let i = 0; i < this.normalized.length; i++) {
-      try {
-        return this.instantiate(i).supportedUrls;
-      } catch {
-        /* skip a bad candidate and try the next one */
-      }
+    return (this.supportedUrlsCache ??= this.computeSupportedUrls());
+  }
+
+  private computeSupportedUrls(): LanguageModelV4['supportedUrls'] {
+    // With multiple candidates the router cannot know which one will serve the
+    // request, so it conservatively reports NO native URL support — the SDK then
+    // downloads + inlines every URL, which any candidate accepts. A lone
+    // candidate can safely report its own support. Either way, a broken / non-v4
+    // first entry must not abort call setup (read before any fallback runs).
+    if (this.normalized.length !== 1) return {};
+    try {
+      return this.instantiate(0).supportedUrls;
+    } catch {
+      return {};
     }
-    return {};
   }
 
   async doGenerate(
@@ -207,12 +216,7 @@ class RouterLanguageModel implements LanguageModelV4 {
     phase: 'generate' | 'stream-open',
   ): boolean {
     errors.push(error);
-    let retry: boolean;
-    try {
-      retry = this.shouldRetry(error);
-    } catch {
-      retry = false;
-    }
+    const retry = safeShouldRetry(this.shouldRetry, error);
     const hasNext = retry && index + 1 < candidates.length;
     try {
       this.onError?.({
@@ -281,11 +285,19 @@ class RouterLanguageModel implements LanguageModelV4 {
   ): { candidates: ResolvedEntry[]; startIndex: number } {
     const required = detectModalities(options.prompt);
     const candidates: ResolvedEntry[] = [];
+    const router = this;
     for (let i = 0; i < this.normalized.length; i++) {
       if (supportsAll(this.normalized[i].supports, required)) {
+        const index = i;
         candidates.push({
           entry: this.normalized[i].original,
-          model: this.instantiate(i),
+          // Instantiate lazily, on first access, so a later candidate whose
+          // factory throws (or yields a non-v4 model) is treated as a normal
+          // candidate failure (classified + fallen through) rather than aborting
+          // the whole request before a healthy higher-priority candidate runs.
+          get model() {
+            return router.instantiate(index);
+          },
           fullIndex: i,
         });
       }

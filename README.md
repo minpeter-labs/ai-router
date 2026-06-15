@@ -80,8 +80,10 @@ through:
 - A recognized non-retryable client error (a `4xx` carrying a `statusCode`,
   e.g. a `400` bad-request — as the AI SDK's `APICallError` does) **stops
   immediately** and is surfaced, rather than burning through every candidate.
-- Anything without a recognizable status (including a bare thrown `Error`) is
-  treated as transient and retried — the historical behavior. Pass a custom
+- A caller **abort / timeout** (your `abortSignal` fired, or a `TimeoutError`)
+  **stops immediately** — it is never fanned out to other candidates.
+- Anything else without a recognizable status (including a bare thrown `Error`)
+  is treated as transient and retried — the historical behavior. Pass a custom
   `shouldRetryThisError` for message-based or stricter policies.
 
 Override the policy with `shouldRetryThisError` (replaces the default), and read

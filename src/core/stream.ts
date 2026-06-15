@@ -5,7 +5,7 @@ import type {
   LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
 
-import { surfaceFailure } from './retry';
+import { safeShouldRetry, surfaceFailure } from './retry';
 import type { OnRouterError, ProviderEntry } from './types';
 
 /**
@@ -43,15 +43,20 @@ export interface FallbackStreamArgs {
 }
 
 /**
- * Framing / metadata stream parts that carry NO visible model output. An in-band
- * error that arrives while only these have been seen is still "pre-content", so
- * we may safely fall back. Everything not in this set counts as real output (a
- * conservative denylist: an unknown future part type is treated as content, so
- * we never risk re-emitting it). The openai-compatible provider emits
- * `response-metadata` (and often `text-start`) on its first chunk before any
- * `text-delta`, so excluding them is essential for mid-stream fallback to work.
+ * Framing / metadata stream parts that carry NO visible model output. Before a
+ * candidate "commits" (emits real content or a `finish`), these are BUFFERED:
+ * if the candidate then fails pre-commit they are discarded (so the failed
+ * candidate contributes nothing to the consumer), and if it commits they are
+ * flushed ahead of the content. This is what lets a fallback be transparent —
+ * the openai-compatible provider emits `response-metadata` (and often
+ * `text-start`) on its first chunk before any `text-delta`, so a pre-content
+ * error after them must still discard them and fall back cleanly, not leak a
+ * half-open text block. `finish` is NOT framing — it is a commit + terminal.
+ *
+ * A conservative denylist: an unknown future part type is treated as content
+ * (committing), so we never risk re-emitting it across a fallback.
  */
-const NON_CONTENT_PARTS: ReadonlySet<string> = new Set([
+const FRAMING_PARTS: ReadonlySet<string> = new Set([
   'stream-start',
   'response-metadata',
   'text-start',
@@ -61,17 +66,18 @@ const NON_CONTENT_PARTS: ReadonlySet<string> = new Set([
   'tool-input-start',
   'tool-input-end',
   'raw',
-  'finish',
 ]);
 
-function isContentPart(part: LanguageModelV4StreamPart): boolean {
-  return !NON_CONTENT_PARTS.has(part.type);
+function isFramingPart(part: LanguageModelV4StreamPart): boolean {
+  return FRAMING_PARTS.has(part.type);
 }
 
 /**
  * Wrap a stream result so a mid-stream failure transparently falls back to the
- * next candidate. The `request`/`response` metadata follows whichever candidate
- * is actually producing the live stream (via getters).
+ * next candidate. The `request`/`response` metadata getters track whichever
+ * candidate is producing the live stream — best-effort, since a consumer that
+ * snapshots them at stream-open (as the AI SDK does) keeps the first candidate's
+ * values across a later fallback.
  */
 export function wrapStreamResult(args: FallbackStreamArgs): LanguageModelV4StreamResult {
   let active: LanguageModelV4StreamResult = args.firstResult;
@@ -98,18 +104,22 @@ export function wrapStreamResult(args: FallbackStreamArgs): LanguageModelV4Strea
  *     NOT reject the stream — it enqueues this and closes normally).
  *  2. A rejected `reader.read()` (transport abort / connection drop).
  *
- * Fallback only happens while no real content has streamed (`hasStreamedAny`
- * false) unless `retryAfterOutput` is set — otherwise the consumer could see
- * duplicated output. A recoverable pre-output error part is SWALLOWED (never
- * enqueued) so the consumer never observes the failed candidate's terminal error.
+ * Each candidate's leading framing parts are BUFFERED until it "commits" (emits
+ * real content or a `finish`). A candidate that fails before committing has its
+ * buffered framing DISCARDED and contributes nothing to the consumer — so a
+ * fallback emits exactly one clean lifecycle (one stream-start, one text block),
+ * never duplicate/half-open parts. Fallback only happens pre-commit unless
+ * `retryAfterOutput` is set.
  */
 export function createFallbackStream(
   args: FallbackStreamArgs,
   setActive: (result: LanguageModelV4StreamResult) => void,
 ): ReadableStream<LanguageModelV4StreamPart> {
-  let hasStreamedAny = false;
-  let streamStartForwarded = false;
+  let committed = false; // has the live candidate emitted content / finished?
+  let finished = false; // a `finish` part was emitted; the stream is complete
+  let prelude: LanguageModelV4StreamPart[] = []; // current candidate's buffered framing
   let cancelled = false;
+  let cancelReason: unknown;
   const errors: unknown[] = args.priorErrors ? [...args.priorErrors] : [];
   let activeReader: ReadableStreamDefaultReader<LanguageModelV4StreamPart> | null = null;
 
@@ -136,6 +146,10 @@ export function createFallbackStream(
           /* already closed/errored */
         }
       };
+      const flushPrelude = (): void => {
+        for (const part of prelude) safeEnqueue(part);
+        prelude = [];
+      };
 
       const emitOnError = (error: unknown, idx: number, willRetry: boolean): void => {
         try {
@@ -144,7 +158,7 @@ export function createFallbackStream(
             entry: args.candidates[idx].entry,
             index: idx,
             error,
-            phase: hasStreamedAny ? 'stream-mid' : 'stream-open',
+            phase: committed ? 'stream-mid' : 'stream-open',
             willRetry,
           });
         } catch {
@@ -153,17 +167,11 @@ export function createFallbackStream(
       };
 
       const onFailure = async (error: unknown, idx: number): Promise<void> => {
+        // The failed candidate's buffered framing is dropped — it never streams.
+        prelude = [];
         errors.push(error);
-        const blockedByOutput = hasStreamedAny && !args.retryAfterOutput;
-
-        let retry = false;
-        if (!blockedByOutput) {
-          try {
-            retry = args.shouldRetry(error);
-          } catch {
-            retry = false;
-          }
-        }
+        const blockedByOutput = committed && !args.retryAfterOutput;
+        const retry = blockedByOutput ? false : safeShouldRetry(args.shouldRetry, error);
 
         const nextIdx = idx + 1;
         const hasNext = retry && nextIdx < args.candidates.length;
@@ -192,47 +200,78 @@ export function createFallbackStream(
         setActive(result);
         const reader = result.stream.getReader();
         activeReader = reader;
+        let advanced = false; // commit this candidate to cooldown once, on first commit part
         try {
+          if (cancelled) return;
           for (;;) {
             let res: ReadableStreamReadResult<LanguageModelV4StreamPart>;
             try {
               res = await reader.read();
             } catch (readErr) {
+              // A read rejection after the stream already finished is just the
+              // connection closing — nothing left to fall back to.
+              if (finished) {
+                safeClose();
+                return;
+              }
               return await onFailure(readErr, idx);
             }
             if (cancelled) return;
             if (res.done) {
+              flushPrelude();
               safeClose();
               return;
             }
             const value = res.value;
+
             if (value.type === 'error') {
-              if (!hasStreamedAny || args.retryAfterOutput) {
-                return await onFailure(value.error, idx);
+              if (finished) {
+                safeClose();
+                return;
               }
-              // Post-output with retryAfterOutput=false: can't un-ring the bell —
-              // forward the terminal error verbatim.
-              safeEnqueue(value);
-              safeClose();
-              return;
+              if (committed && !args.retryAfterOutput) {
+                // Content already streamed and we won't retry — forward verbatim.
+                flushPrelude();
+                safeEnqueue(value);
+                safeClose();
+                return;
+              }
+              return await onFailure(value.error, idx);
             }
-            // Suppress a fallback candidate's leading stream-start so the consumer
-            // observes exactly one model-call lifecycle.
-            if (value.type === 'stream-start') {
-              if (streamStartForwarded) continue;
-              streamStartForwarded = true;
+
+            if (isFramingPart(value)) {
+              if (committed) safeEnqueue(value); // post-commit framing passes through
+              else prelude.push(value); // pre-commit framing is buffered
+              continue;
+            }
+
+            // A commit part: real content, or a `finish` terminal.
+            if (!committed) {
+              committed = true;
+              flushPrelude();
             }
             safeEnqueue(value);
-            if (isContentPart(value) && !hasStreamedAny) {
-              hasStreamedAny = true;
+            if (value.type === 'finish') finished = true;
+            if (!advanced) {
+              advanced = true;
               args.onAdvance?.(idx, errors.length > 0);
             }
           }
         } finally {
-          try {
-            reader.releaseLock();
-          } catch {
-            /* already released */
+          if (cancelled) {
+            // Propagate the consumer's cancel to the live upstream (this may be a
+            // survivor opened during the fallback race) so its transport closes.
+            try {
+              void Promise.resolve(reader.cancel(cancelReason)).catch(() => {});
+            } catch {
+              /* ignore */
+            }
+          } else {
+            try {
+              reader.releaseLock();
+            } catch {
+              /* already released */
+            }
           }
           if (activeReader === reader) activeReader = null;
         }
@@ -242,8 +281,9 @@ export function createFallbackStream(
     },
     cancel(reason) {
       cancelled = true;
+      cancelReason = reason;
       try {
-        void activeReader?.cancel(reason);
+        void Promise.resolve(activeReader?.cancel(reason)).catch(() => {});
       } catch {
         /* ignore */
       }

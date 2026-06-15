@@ -375,7 +375,7 @@ describe('createRouter — lazy instantiation & caching', () => {
     expect(model.doGenerateCalls).toHaveLength(3);
   });
 
-  it('only instantiates the candidates needed to satisfy a request (lazy fallback)', async () => {
+  it('only instantiates the candidates actually attempted (lazy fallback)', async () => {
     let primaryBuilt = 0;
     let secondaryBuilt = 0;
     const primary = okModel('primary');
@@ -392,62 +392,75 @@ describe('createRouter — lazy instantiation & caching', () => {
 
     await generateText({ model: route('chat'), prompt: 'hi' });
 
-    // selectCandidates instantiates every modality-matching candidate up front,
-    // so both text providers are built even though only the primary is called.
+    // Candidates are instantiated lazily, only when actually attempted: the
+    // primary succeeds, so the secondary's factory is never invoked.
     expect(primaryBuilt).toBe(1);
-    expect(secondaryBuilt).toBe(1);
+    expect(secondaryBuilt).toBe(0);
     expect(primary.doGenerateCalls).toHaveLength(1);
     expect(secondary.doGenerateCalls).toHaveLength(0);
   });
-});
 
-// ---------------------------------------------------------------------------
-// createRouter — supportedUrls inheritance
-// ---------------------------------------------------------------------------
-describe('createRouter — supportedUrls', () => {
-  it('inherits supportedUrls from the FIRST candidate (not the second)', async () => {
-    const supported = { 'image/*': [/^https:\/\/example\.com\/.*$/] };
-    const first = new MockLanguageModelV4({
-      provider: 'mock',
-      modelId: 'first',
-      supportedUrls: supported,
-      doGenerate: async () => ({ content: [{ type: 'text', text: 'x' }], finishReason, usage, warnings: [] }),
-    });
-    const second = new MockLanguageModelV4({
-      provider: 'mock',
-      modelId: 'second',
-      supportedUrls: { 'audio/*': [/^https:\/\/other\.com\/.*$/] },
-      doGenerate: async () => ({ content: [{ type: 'text', text: 'y' }], finishReason, usage, warnings: [] }),
-    });
+  it('does not let a broken later candidate abort a request a healthy earlier one can serve', async () => {
+    const healthy = okModel('healthy');
+    const stub = { specificationVersion: 'v3' } as unknown as LanguageModelV4;
 
     const route = createRouter({
       models: {
         chat: [
-          { provider: () => first, model: 'f', supports: ['text', 'image'] },
-          { provider: () => second, model: 's', supports: ['text', 'image'] },
+          { provider: () => healthy, model: 'h', supports: ['text'] },
+          { model: stub, supports: ['text'] }, // non-v4 instance — would throw if instantiated
         ],
       },
     });
 
-    // Forwarded straight from the first candidate's model. The mock exposes
-    // supportedUrls as a Promise, which the router returns as-is (the source
-    // intentionally never awaits/copies it), so await to compare the value.
-    const inherited = await asV4(route('chat')).supportedUrls;
-    expect(inherited).toEqual(supported);
-    expect(inherited).not.toHaveProperty('audio/*');
+    // The healthy primary serves; the broken sibling is never instantiated.
+    const { text } = await generateText({ model: route('chat'), prompt: 'hi' });
+    expect(text).toBe('healthy');
+    expect(healthy.doGenerateCalls).toHaveLength(1);
   });
+});
 
-  it('reports no supported URLs for a single candidate with none', async () => {
-    const model = new MockLanguageModelV4({
+// ---------------------------------------------------------------------------
+// createRouter — supportedUrls (conservative intersection across candidates)
+// ---------------------------------------------------------------------------
+describe('createRouter — supportedUrls', () => {
+  function urlModel(id: string, supportedUrls: Record<string, RegExp[]>) {
+    return new MockLanguageModelV4({
       provider: 'mock',
-      modelId: 'm',
-      supportedUrls: {},
-      doGenerate: async () => ({ content: [{ type: 'text', text: 'z' }], finishReason, usage, warnings: [] }),
+      modelId: id,
+      supportedUrls,
+      doGenerate: async () => ({ content: [{ type: 'text', text: id }], finishReason, usage, warnings: [] }),
     });
+  }
+
+  it('reports NO native URL support for a multi-candidate router (SDK inlines)', async () => {
+    // The router cannot know which candidate will serve, so it claims no URL
+    // support and lets the SDK download+inline — and it does so WITHOUT
+    // instantiating the candidates (lazy: only computed once, no factory calls).
+    let built = 0;
     const route = createRouter({
-      models: { chat: [{ provider: () => model, model: 'm', supports: ['text'] }] },
+      models: {
+        chat: [
+          { provider: () => { built++; return urlModel('first', { 'image/*': [/^https:\/\/a\//] }); }, model: 'f', supports: ['text', 'image'] },
+          { provider: () => { built++; return urlModel('second', { 'image/*': [/^https:\/\/a\//] }); }, model: 's', supports: ['text', 'image'] },
+        ],
+      },
     });
     expect(await asV4(route('chat')).supportedUrls).toEqual({});
+    expect(built).toBe(0);
+  });
+
+  it('reports a single candidate\'s own support unchanged', async () => {
+    const re = /^https:\/\/example\.com\/.*$/;
+    const withUrls = createRouter({
+      models: { chat: [{ provider: () => urlModel('m', { 'image/*': [re] }), model: 'm', supports: ['text', 'image'] }] },
+    });
+    expect(await asV4(withUrls('chat')).supportedUrls).toEqual({ 'image/*': [re] });
+
+    const withNone = createRouter({
+      models: { chat: [{ provider: () => urlModel('n', {}), model: 'n', supports: ['text'] }] },
+    });
+    expect(await asV4(withNone('chat')).supportedUrls).toEqual({});
   });
 });
 

@@ -217,6 +217,57 @@ describe('createFallbackStream (mid-stream fallback)', () => {
     expect(out.parts.filter((p) => p.type === 'stream-start')).toHaveLength(1);
   });
 
+  it('does not leak the failed candidate framing parts (no duplicate response-metadata/text-start)', async () => {
+    // Primary forwards a full framing prelude then fails pre-content; none of it
+    // must reach the consumer — only the survivor's single clean lifecycle.
+    const primary = chunkModel([
+      { type: 'stream-start', warnings: [] },
+      { type: 'response-metadata', id: 'res-1', modelId: 'm', timestamp: new Date(0) },
+      { type: 'text-start', id: '1' },
+      { type: 'error', error: new Error('overloaded 503') },
+    ]);
+    const secondary = chunkModel([
+      { type: 'stream-start', warnings: [] },
+      { type: 'response-metadata', id: 'res-2', modelId: 'm', timestamp: new Date(0) },
+      { type: 'text-start', id: '1' },
+      { type: 'text-delta', id: '1', delta: 'ok' },
+      { type: 'text-end', id: '1' },
+      { type: 'finish', finishReason, usage },
+    ]);
+
+    const out = await runFallback([primary, secondary]);
+    expect(out.text).toBe('ok');
+    expect(out.parts.filter((p) => p.type === 'stream-start')).toHaveLength(1);
+    expect(out.parts.filter((p) => p.type === 'response-metadata')).toHaveLength(1);
+    expect(out.parts.filter((p) => p.type === 'text-start')).toHaveLength(1);
+  });
+
+  it('does NOT fall back after a clean finish even if the transport then drops', async () => {
+    // A completed stream (finish emitted) followed by a read rejection is just the
+    // connection closing — the request already succeeded; do not re-run it.
+    const primary = new MockLanguageModelV4({
+      provider: 'mock',
+      modelId: 'mock',
+      doStream: async () => ({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
+          start(controller) {
+            controller.enqueue({ type: 'stream-start', warnings: [] });
+            controller.enqueue({ type: 'finish', finishReason, usage });
+          },
+          pull() {
+            throw new Error('ECONNRESET');
+          },
+        }),
+      }),
+    });
+    const secondary = textModel(['SHOULD NOT RUN']);
+
+    const out = await runFallback([primary, secondary]);
+    expect(out.error).toBeUndefined();
+    expect(secondary.doStreamCalls).toHaveLength(0);
+    expect(out.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
+  });
+
   it('reports phase stream-mid for a post-content failure when retryAfterOutput=true', async () => {
     const primary = errorPartModel(new Error('503'), ['partial ']);
     const secondary = textModel(['secondary']);

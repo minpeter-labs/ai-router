@@ -1,3 +1,5 @@
+import { isAbortError } from '@ai-sdk/provider-utils';
+
 import type { ShouldRetryThisError } from './types';
 
 export type { ShouldRetryThisError } from './types';
@@ -12,6 +14,17 @@ const RETRYABLE_STATUS = new Set([401, 403, 408, 409, 413, 429, 498]);
 /** Only accept a finite number — never coerce a numeric string (e.g. 'ECONNRESET'). */
 function pickNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Extract just the numeric HTTP status the classifier needs — without the
+ * `message` normalization (and its `JSON.stringify`) that the default
+ * classifier never reads.
+ */
+function statusCodeOf(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const e = error as Record<string, unknown>;
+  return pickNumber(e.statusCode ?? e.status);
 }
 
 function safeStringify(value: unknown): string {
@@ -50,12 +63,15 @@ export function normalizeError(error: unknown): { statusCode?: number; message: 
  * candidate), `false` to stop and surface the error.
  *
  * Decision order, driven by the numeric `statusCode` when one is present:
- *  1. A positively-retryable status (`RETRYABLE_STATUS` or `>= 500`) -> retry.
- *  2. A 4xx client error NOT in the retryable set (e.g. 400/404/422) -> stop.
+ *  1. An abort/timeout (the caller's `abortSignal` fired, or a `TimeoutError`)
+ *     -> stop. Retrying another candidate with the same aborted signal is
+ *     pointless and would swallow the caller's intent.
+ *  2. A positively-retryable status (`RETRYABLE_STATUS` or `>= 500`) -> retry.
+ *  3. A 4xx client error NOT in the retryable set (e.g. 400/404/422) -> stop.
  *     This is the key P0-B behavior: a genuine bad-request (which carries a
  *     numeric `statusCode`, e.g. the AI SDK's `APICallError`) does not burn
  *     through every candidate.
- *  3. Otherwise -> retry. A generic thrown error with no recognizable status is
+ *  4. Otherwise -> retry. A generic thrown error with no recognizable status is
  *     treated as a transient/unknown failure. This reproduces the router's
  *     historical "retry on any thrown error" behavior.
  *
@@ -65,7 +81,10 @@ export function normalizeError(error: unknown): { statusCode?: number; message: 
  * {@link ShouldRetryThisError} (and may call this as a fallback).
  */
 export function defaultShouldRetryThisError(error: unknown): boolean {
-  const { statusCode } = normalizeError(error);
+  // A caller-initiated abort / timeout must not fan out to other candidates.
+  if (isAbortError(error)) return false;
+
+  const statusCode = statusCodeOf(error);
 
   if (statusCode != null) {
     if (RETRYABLE_STATUS.has(statusCode) || statusCode >= 500) return true;
@@ -78,6 +97,15 @@ export function defaultShouldRetryThisError(error: unknown): boolean {
 /** Resolve the classifier to use: the caller's hook, or the default. */
 export function resolveShouldRetry(hook?: ShouldRetryThisError): ShouldRetryThisError {
   return hook ?? defaultShouldRetryThisError;
+}
+
+/** Run a classifier defensively — a throw inside it degrades to "do not retry". */
+export function safeShouldRetry(shouldRetry: ShouldRetryThisError, error: unknown): boolean {
+  try {
+    return shouldRetry(error);
+  } catch {
+    return false;
+  }
 }
 
 /**

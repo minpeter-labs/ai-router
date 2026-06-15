@@ -38,6 +38,11 @@ describe('defaultShouldRetryThisError', () => {
   it('still retries a transient status even when the message looks terminal', () => {
     expect(defaultShouldRetryThisError({ statusCode: 503, message: 'bad request' })).toBe(true);
   });
+
+  it('does NOT retry a caller abort / timeout (would swallow the abort)', () => {
+    expect(defaultShouldRetryThisError(Object.assign(new Error('aborted'), { name: 'AbortError' }))).toBe(false);
+    expect(defaultShouldRetryThisError(new DOMException('timed out', 'TimeoutError'))).toBe(false);
+  });
 });
 
 describe('normalizeError', () => {
