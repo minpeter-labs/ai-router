@@ -124,9 +124,10 @@ class RouterLanguageModel implements LanguageModelV4 {
     this.modelId = logicalId;
     this.normalized = entries.map(normalizeEntry);
     this.onError = options.onError;
-    this.shouldRetry = resolveShouldRetry(options.shouldRetryThisError);
-    this.retryAfterOutput = options.retryAfterOutput ?? false;
-    const cfg = resolveCooldown(options.cooldown);
+    const fallback = options.fallback;
+    this.shouldRetry = resolveShouldRetry(fallback?.shouldRetry);
+    this.retryAfterOutput = fallback?.retryAfterOutput ?? false;
+    const cfg = resolveCooldown(fallback?.cooldown);
     this.cooldown = cfg ? new CooldownState(cfg) : undefined;
   }
 

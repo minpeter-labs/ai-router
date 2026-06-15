@@ -650,7 +650,7 @@ describe("createRouter — error classification (P0-B)", () => {
           { provider: () => secondary, model: "s", supports: ["text"] },
         ],
       },
-      shouldRetryThisError: () => false,
+      fallback: { shouldRetry: () => false },
     });
 
     await expect(
@@ -860,7 +860,7 @@ describe("createRouter — cooldown (P1)", () => {
           { provider: () => secondary, model: "s", supports: ["text"] },
         ],
       },
-      cooldown: true,
+      fallback: { cooldown: true },
     });
     const routed = route("chat");
 
@@ -893,7 +893,7 @@ describe("createRouter — cooldown (P1)", () => {
           { provider: () => c, model: "c", supports: ["text", "image"] },
         ],
       },
-      cooldown: true,
+      fallback: { cooldown: true },
     });
     const routed = route("chat");
 
@@ -928,7 +928,7 @@ describe("createRouter — cooldown (P1)", () => {
           { provider: () => b, model: "b", supports: ["text", "image"] },
         ],
       },
-      cooldown: true,
+      fallback: { cooldown: true },
     });
     const routed = route("chat");
 

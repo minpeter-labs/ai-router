@@ -1,6 +1,25 @@
-import type { CooldownConfig } from "./types";
+import type { CooldownOption } from "./types";
 
 const DEFAULT_RESET_INTERVAL = 180_000; // 3 minutes
+
+const DURATION_RE = /^(\d+(?:\.\d+)?)(ms|s|m|h)$/;
+const UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+};
+
+/** Parse a duration string like `'500ms'`, `'30s'`, `'1m'`, `'2h'` to milliseconds. */
+function parseDuration(value: string): number {
+  const match = DURATION_RE.exec(value.trim());
+  if (match === null) {
+    throw new Error(
+      `ai-router: invalid cooldown duration "${value}" (use e.g. '500ms', '30s', '1m', '2h')`
+    );
+  }
+  return Number(match[1]) * UNIT_MS[match[2]];
+}
 
 /**
  * Per-logical-id sticky+reset state. Disabled by default — a {@link CooldownState}
@@ -61,13 +80,19 @@ export class CooldownState {
 
 /** Normalize the `cooldown` option to a concrete config, or `undefined` when off. */
 export function resolveCooldown(
-  opt?: CooldownConfig | boolean
+  opt?: CooldownOption
 ): { modelResetInterval: number } | undefined {
   if (!opt) {
-    return;
+    return; // false / undefined / 0
   }
   if (opt === true) {
     return { modelResetInterval: DEFAULT_RESET_INTERVAL };
+  }
+  if (typeof opt === "number") {
+    return { modelResetInterval: opt };
+  }
+  if (typeof opt === "string") {
+    return { modelResetInterval: parseDuration(opt) };
   }
   return {
     modelResetInterval: opt.modelResetInterval ?? DEFAULT_RESET_INTERVAL,

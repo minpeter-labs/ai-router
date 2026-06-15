@@ -84,27 +84,30 @@ through:
   **stops immediately** — it is never fanned out to other candidates.
 - Anything else without a recognizable status (including a bare thrown `Error`)
   is treated as transient and retried — the historical behavior. Pass a custom
-  `shouldRetryThisError` for message-based or stricter policies.
+  `fallback.shouldRetry` for message-based or stricter policies.
 
-Override the policy with `shouldRetryThisError` (replaces the default), and read
-the bundled `defaultShouldRetryThisError` if you want to compose on top of it:
+All fallback tuning lives under one optional `fallback` object:
 
 ```ts
 import { defaultShouldRetryThisError } from '@minpeter/ai-router';
 
 createRouter({
   models,
-  shouldRetryThisError: (error) =>
-    isMyTransient(error) || defaultShouldRetryThisError(error),
+  fallback: {
+    // Replaces the default classifier. Compose on top of the bundled default:
+    shouldRetry: (error) => isMyTransient(error) || defaultShouldRetryThisError(error),
+    retryAfterOutput: false, // (default) — see below
+    cooldown: '1m',          // see "Cooldown" below
+  },
 });
 ```
 
 **Mid-stream fallback.** An error that arrives _after_ the stream opens but
 _before_ any content is emitted triggers a transparent fallback to the next
 candidate — the failed candidate's error is swallowed, never shown to the
-consumer. Once content has streamed, the default (`retryAfterOutput: false`)
-surfaces the error rather than risk duplicated output; set `retryAfterOutput:
-true` to retry anyway (the next candidate re-emits from scratch, so output may
+consumer. Once content has streamed, the default (`fallback.retryAfterOutput:
+false`) surfaces the error rather than risk duplicated output; set it `true` to
+retry anyway (the next candidate re-emits from scratch, so output may
 duplicate). This defaults `false` — unlike `ai-fallback`, which defaults `true`.
 
 **When all candidates fail:** a single failure is re-thrown as-is; multiple
@@ -113,14 +116,19 @@ and whose `.message` embeds the last one.
 
 ## Cooldown (sticky fallback)
 
-Opt in with `cooldown` to remember the surviving candidate per logical id, so
-later requests skip a known-down primary and re-probe it after
-`modelResetInterval` (default 3 min). Off by default — the router is otherwise
-fully stateless. Stickiness requires reusing the same `route('id')` instance.
+Opt in with `fallback.cooldown` to remember the surviving candidate per logical
+id, so later requests skip a known-down primary and re-probe it after the
+interval (default 3 min). Off by default — the router is otherwise fully
+stateless. Stickiness requires reusing the same `route('id')` instance.
 
 ```ts
-const route = createRouter({ models, cooldown: true });
-//                                    or: { modelResetInterval: 60_000 }
+const route = createRouter({
+  models,
+  fallback: { cooldown: '1m' },
+  //         cooldown: true            // default (3 minutes)
+  //         cooldown: 60_000          // milliseconds
+  //         cooldown: { modelResetInterval: 60_000 }  // explicit
+});
 const chat = route('kimi'); // reuse this instance across requests
 ```
 

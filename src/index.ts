@@ -7,7 +7,10 @@ export {
 export { createRouter } from "./core/router";
 export type {
   CooldownConfig,
+  CooldownOption,
   CreateRouterOptions,
+  Duration,
+  FallbackOptions,
   Modality,
   OnRouterError,
   ProviderEntry,

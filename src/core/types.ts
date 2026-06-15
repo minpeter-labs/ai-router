@@ -77,6 +77,13 @@ export type ProviderEntry =
  */
 export type ShouldRetryThisError = (error: unknown) => boolean;
 
+/** A human-readable duration, e.g. `'500ms'`, `'30s'`, `'1m'`, `'2h'`. */
+export type Duration =
+  | `${number}ms`
+  | `${number}s`
+  | `${number}m`
+  | `${number}h`;
+
 /**
  * Opt-in sticky+reset ("cooldown") configuration. When enabled, the router
  * remembers the surviving candidate per logical id so subsequent requests skip a
@@ -88,6 +95,42 @@ export interface CooldownConfig {
    * re-probes the primary. Default `180000` (3 minutes).
    */
   modelResetInterval?: number;
+}
+
+/**
+ * How to configure cooldown. Omit / `false` => off (stateless, the default).
+ * `true` => defaults (3 minutes). A `number` is milliseconds, a {@link Duration}
+ * string is parsed (`'90s'`, `'1m'`), or pass a {@link CooldownConfig} explicitly.
+ */
+export type CooldownOption = boolean | number | Duration | CooldownConfig;
+
+/**
+ * Fallback behavior tuning for {@link createRouter} — all optional.
+ */
+export interface FallbackOptions {
+  /**
+   * Opt-in sticky+reset. Skip a known-down primary on later requests and
+   * re-probe it after the interval. See {@link CooldownOption}.
+   *
+   * @example cooldown: true        // default (3 minutes)
+   * @example cooldown: '1m'        // duration string
+   * @example cooldown: 60_000      // milliseconds
+   */
+  cooldown?: CooldownOption;
+  /**
+   * Whether to fall back after content has already streamed. Default `false`:
+   * once any content part has been emitted, a mid-stream error is surfaced
+   * as-is rather than risk duplicated output. Set `true` to retry anyway
+   * (the next candidate re-emits from scratch, so output may be duplicated).
+   */
+  retryAfterOutput?: boolean;
+  /**
+   * Custom retry classifier. When provided it REPLACES the default classifier
+   * (it is not composed). Returning `false` stops fallback and surfaces the
+   * error; returning `true` falls through to the next candidate. Defaults to
+   * {@link defaultShouldRetryThisError}.
+   */
+  shouldRetry?: ShouldRetryThisError;
 }
 
 /**
@@ -116,12 +159,8 @@ export type OnRouterError = (info: {
  * Options for {@link createRouter}.
  */
 export interface CreateRouterOptions {
-  /**
-   * Opt-in sticky+reset. Omit / `false` => fully stateless (every request starts
-   * at the first candidate — the default). `true` => defaults
-   * (`modelResetInterval: 180000`). An object tunes the interval.
-   */
-  cooldown?: CooldownConfig | boolean;
+  /** Fallback behavior tuning (retry classification, mid-stream retry, cooldown). */
+  fallback?: FallbackOptions;
   /**
    * Map of logical model id -> ordered list of candidate backends.
    * Candidates are tried in array order (after modality filtering).
@@ -129,18 +168,4 @@ export interface CreateRouterOptions {
   models: Record<string, ProviderEntry[]>;
   /** Optional hook invoked each time a candidate fails before falling back. */
   onError?: OnRouterError;
-  /**
-   * Whether to fall back after content has already streamed. Default `false`:
-   * once any content part has been emitted, a mid-stream error is surfaced
-   * as-is rather than risk duplicated output. Set `true` to retry anyway
-   * (the next candidate re-emits from scratch, so output may be duplicated).
-   */
-  retryAfterOutput?: boolean;
-  /**
-   * Custom retry classifier. When provided it REPLACES the default classifier
-   * (it is not composed). Returning `false` stops fallback and surfaces the
-   * error; returning `true` falls through to the next candidate. Defaults to
-   * {@link defaultShouldRetryThisError}.
-   */
-  shouldRetryThisError?: ShouldRetryThisError;
 }
