@@ -70,8 +70,15 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
 
 /**
  * True iff every modality in `required` is present in the entry's `supports`.
+ *
+ * An omitted (`undefined`) `supports` means the entry is a universal candidate
+ * that matches ANY modality — it is never filtered out.
  */
-export function supportsAll(supports: Modality[], required: Set<Modality>): boolean {
+export function supportsAll(
+  supports: Modality[] | undefined,
+  required: Set<Modality>,
+): boolean {
+  if (supports === undefined) return true;
   for (const modality of required) {
     if (!supports.includes(modality)) return false;
   }
