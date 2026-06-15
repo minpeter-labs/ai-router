@@ -43,8 +43,10 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          version: pnpm version
-          publish: pnpm release
+          # `pnpm run` so these resolve to the package scripts, not pnpm's
+          # built-in `pnpm version` command.
+          version: pnpm run version
+          publish: pnpm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No NPM_TOKEN: `changeset publish` authenticates via OIDC trusted
