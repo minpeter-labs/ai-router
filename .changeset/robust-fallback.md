@@ -1,5 +1,5 @@
 ---
-"@minpeter/ai-router": minor
+"@minpeter/ai-router": patch
 ---
 
 Robust fallback upgrade (all additive, 100% backward compatible):
