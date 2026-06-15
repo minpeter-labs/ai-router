@@ -17,8 +17,11 @@ Talks to the actual Friendli / OpenRouter APIs.
 2. Run it (`dotenv` loads `.env` automatically):
 
    ```bash
-   pnpm example
+   pnpm tsx examples/basic.ts
    ```
+
+   The example imports the built package, so after changing `src/` run
+   `pnpm build` first.
 
 With both keys set you get genuine fallback — if Friendli rejects the request
 the router transparently retries the same logical model on OpenRouter.

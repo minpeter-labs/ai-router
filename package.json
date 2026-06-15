@@ -50,7 +50,6 @@
     "check:ci": "biome ci .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "example": "pnpm build && tsx examples/basic.ts",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"

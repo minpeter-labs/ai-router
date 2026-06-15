@@ -1,12 +1,3 @@
-// Real usage — talks to the actual Friendli / OpenRouter APIs.
-//
-// 1. Copy .env.example to .env at the repo root and fill in your key(s).
-// 2. Run it:  pnpm example
-//
-// Set at least one key; with both set you get genuine fallback — if Friendli
-// rejects the request, the router transparently retries the same logical model
-// on OpenRouter.
-
 import { config as loadEnv } from "dotenv";
 
 loadEnv({ path: ".env", quiet: true, override: true });
@@ -43,22 +34,19 @@ const router = createRouter({
     process.stderr.write(`[${logicalId}] fell through: ${String(error)}\n`),
 });
 
-const { text, steps } = await generateText({
+const { text, finalStep } = await generateText({
   model: router("gemma-4-31B-it"),
   prompt: "In one sentence, what is a language model router?",
-  reasoning: "low",
+  reasoning: "none",
 });
 
-// Reasoning lives on the final step (the top-level `reasoningText` is deprecated).
-const reasoningText = steps.at(-1)?.reasoningText;
-
-// Print any reasoning dimmed/gray so it reads as secondary next to the answer.
-// Only colorize a real terminal — stays clean when piped to a file.
-const ESC = String.fromCharCode(27); // ANSI escape; no raw control byte in source
 const dim = (s: string) =>
-  process.stdout.isTTY ? `${ESC}[2m${s}${ESC}[0m` : s;
+  process.stdout.isTTY
+    ? `${String.fromCharCode(27)}[2m${s}${String.fromCharCode(27)}[0m`
+    : s;
 
-if (reasoningText) {
-  process.stdout.write(`${dim(`💭 ${reasoningText}`)}\n\n`);
+if (finalStep.reasoningText) {
+  process.stdout.write(`${dim(`💭  ${finalStep.reasoningText}`)}\n\n`);
 }
+
 process.stdout.write(`${text}\n`);
