@@ -1,3 +1,14 @@
+export type {
+  FusionAnalysis,
+  FusionEvent,
+  FusionMember,
+  FusionMemberConfig,
+  FusionOptions,
+  FusionPanelItem,
+  FusionSynthSource,
+  OnFusionError,
+} from "./core/fusion";
+export { createFusion, MAX_FUSION_DEPTH } from "./core/fusion";
 export { detectModalities } from "./core/modality";
 export {
   defaultShouldRetryThisError,
