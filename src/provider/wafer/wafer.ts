@@ -3,7 +3,7 @@ import {
   type OpenAICompatibleProviderSettings,
 } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
-import { wrapLanguageModel } from "ai";
+import { extractReasoningMiddleware, wrapLanguageModel } from "ai";
 
 import { waferReasoningMiddleware, waferReasoningTransform } from "./reasoning";
 
@@ -61,11 +61,18 @@ export function createWafer(
     headers: zdr ? { ...headers, [ZDR_HEADER]: "required" } : headers,
     transformRequestBody: waferReasoningTransform,
   });
-  // Wrap each model so a top-level `reasoning: 'none'` survives down to the body
-  // (the AI SDK otherwise drops it before `transformRequestBody` can see it).
   return (modelId: string) =>
     wrapLanguageModel({
       model: provider(modelId),
-      middleware: waferReasoningMiddleware,
+      middleware: [
+        // Wrap each model so a top-level `reasoning: 'none'` survives down to the
+        // body (the AI SDK otherwise drops it before `transformRequestBody` runs).
+        waferReasoningMiddleware,
+        // Most reasoning models return reasoning in a separate `reasoning_content`
+        // field (handled by the base layer), but `MiniMax-M3` instead returns it
+        // inline in `content` as `<think>…</think>`. Surface that as reasoning. A
+        // no-op for the others — without a `<think>` tag the text passes through.
+        extractReasoningMiddleware({ tagName: "think" }),
+      ],
     });
 }
