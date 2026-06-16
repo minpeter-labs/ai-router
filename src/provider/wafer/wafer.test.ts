@@ -59,6 +59,77 @@ describe("createWafer", () => {
 
     expect(captured.body.reasoning_effort).toBe("high");
     expect(captured.body.thinking).toBeUndefined();
+    expect(captured.body.preserve_thinking).toBeUndefined();
+  });
+
+  it("adds preserved-reasoning fields when preserveReasoning is forced", async () => {
+    const { fetch, captured } = captureFetch();
+    const wafer = createWafer({ apiKey: "k", fetch, preserveReasoning: true });
+
+    await generateText({
+      model: wafer("Qwen3.5-397B-A17B"),
+      prompt: "hi",
+      reasoning: "high",
+    });
+
+    expect(captured.body.reasoning_effort).toBe("high");
+    expect(captured.body.preserve_thinking).toBe(true);
+    expect(captured.body.thinking).toEqual({ type: "enabled", keep: "all" });
+  });
+
+  it("auto-adds preserved-reasoning fields for documented Wafer models", async () => {
+    const { fetch, captured } = captureFetch();
+    const wafer = createWafer({
+      apiKey: "k",
+      fetch,
+      preserveReasoning: "auto",
+    });
+
+    await generateText({
+      model: wafer("Kimi-K2.6"),
+      prompt: "hi",
+      reasoning: "high",
+    });
+
+    expect(captured.body.reasoning_effort).toBe("high");
+    expect(captured.body.preserve_thinking).toBe(true);
+    expect(captured.body.thinking).toEqual({ type: "enabled", keep: "all" });
+  });
+
+  it("does not auto-add preserved-reasoning fields for other models", async () => {
+    const { fetch, captured } = captureFetch();
+    const wafer = createWafer({
+      apiKey: "k",
+      fetch,
+      preserveReasoning: "auto",
+    });
+
+    await generateText({
+      model: wafer("Qwen3.5-397B-A17B"),
+      prompt: "hi",
+      reasoning: "high",
+    });
+
+    expect(captured.body.reasoning_effort).toBe("high");
+    expect(captured.body.preserve_thinking).toBeUndefined();
+    expect(captured.body.thinking).toBeUndefined();
+  });
+
+  it("lets call-level preserveReasoning override the provider default", async () => {
+    const { fetch, captured } = captureFetch();
+    const wafer = createWafer({ apiKey: "k", fetch, preserveReasoning: true });
+
+    await generateText({
+      model: wafer("GLM-5.1"),
+      prompt: "hi",
+      reasoning: "high",
+      providerOptions: { wafer: { preserveReasoning: false } },
+    });
+
+    expect("preserveReasoning" in captured.body).toBe(false);
+    expect(captured.body.reasoning_effort).toBe("high");
+    expect(captured.body.preserve_thinking).toBeUndefined();
+    expect(captured.body.thinking).toBeUndefined();
   });
 
   it("forwards the Wafer-specific 'max' level via providerOptions", async () => {
@@ -103,6 +174,19 @@ describe("createWafer", () => {
     const wafer = createWafer({ apiKey: "k", fetch, zdr: true });
 
     await generateText({ model: wafer("m"), prompt: "hi" });
+
+    expect(captured.headers.get("wafer-zdr")).toBe("required");
+  });
+
+  it("keeps `Wafer-ZDR: required` when call headers try to override it", async () => {
+    const { fetch, captured } = captureFetch();
+    const wafer = createWafer({ apiKey: "k", fetch, zdr: true });
+
+    await generateText({
+      model: wafer("m"),
+      prompt: "hi",
+      headers: { "Wafer-ZDR": "optional" },
+    });
 
     expect(captured.headers.get("wafer-zdr")).toBe("required");
   });

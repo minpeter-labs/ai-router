@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { waferReasoningTransform } from "./reasoning";
+import {
+  createWaferRequestTransform,
+  waferReasoningTransform,
+} from "./reasoning";
 
 // Wafer reasoning dialect: an explicit level is forwarded verbatim as
 // reasoning_effort (granular); on-without-level / off fall back to thinking.type.
@@ -17,6 +20,24 @@ describe("waferReasoningTransform", () => {
       expect("thinking" in out).toBe(false);
     });
   }
+
+  it("maps AI SDK minimal effort to Wafer low", () => {
+    const out = waferReasoningTransform({ reasoning_effort: "minimal" });
+    expect(out.reasoning_effort).toBe("low");
+    expect("thinking" in out).toBe(false);
+  });
+
+  it("maps AI SDK xhigh effort to Wafer max", () => {
+    const out = waferReasoningTransform({ reasoning_effort: "xhigh" });
+    expect(out.reasoning_effort).toBe("max");
+    expect("thinking" in out).toBe(false);
+  });
+
+  it("does not forward an unsupported string effort to Wafer", () => {
+    const out = waferReasoningTransform({ reasoning_effort: "ultra" });
+    expect(out.thinking).toEqual({ type: "enabled" });
+    expect("reasoning_effort" in out).toBe(false);
+  });
 
   it("maps reasoning_effort true (no level) -> thinking.type='enabled'", () => {
     const out = waferReasoningTransform({ reasoning_effort: true });
@@ -69,5 +90,61 @@ describe("waferReasoningTransform", () => {
     const out = waferReasoningTransform(input);
     expect(nested).toEqual({ keep: "all" });
     expect(out.thinking).not.toBe(nested);
+  });
+});
+
+describe("createWaferRequestTransform", () => {
+  it("adds both Wafer preserved-reasoning fields when forced and reasoning is enabled", () => {
+    const transform = createWaferRequestTransform(true);
+
+    const out = transform({
+      model: "Qwen3.5-397B-A17B",
+      reasoning_effort: "high",
+    });
+
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.preserve_thinking).toBe(true);
+    expect(out.thinking).toEqual({ type: "enabled", keep: "all" });
+  });
+
+  it("does not preserve reasoning when forced but reasoning is disabled", () => {
+    const transform = createWaferRequestTransform(true);
+
+    const out = transform({ model: "GLM-5.1", reasoning_effort: "none" });
+
+    expect(out.thinking).toEqual({ type: "disabled" });
+    expect(out.preserve_thinking).toBeUndefined();
+  });
+
+  it("auto-preserves reasoning only for officially supported models", () => {
+    const transform = createWaferRequestTransform("auto");
+
+    const supported = transform({
+      model: "GLM-5.1",
+      reasoning_effort: "high",
+    });
+    const unsupported = transform({
+      model: "Qwen3.5-397B-A17B",
+      reasoning_effort: "high",
+    });
+
+    expect(supported.preserve_thinking).toBe(true);
+    expect(supported.thinking).toEqual({ type: "enabled", keep: "all" });
+    expect(unsupported.preserve_thinking).toBeUndefined();
+    expect(unsupported.thinking).toBeUndefined();
+  });
+
+  it("lets the call-level preserveReasoning alias override the provider default", () => {
+    const transform = createWaferRequestTransform(true);
+
+    const out = transform({
+      model: "GLM-5.1",
+      preserveReasoning: false,
+      reasoning_effort: "high",
+    });
+
+    expect("preserveReasoning" in out).toBe(false);
+    expect(out.preserve_thinking).toBeUndefined();
+    expect(out.reasoning_effort).toBe("high");
   });
 });
