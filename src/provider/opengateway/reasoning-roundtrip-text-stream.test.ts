@@ -1,6 +1,8 @@
+import type { JSONValue } from "@ai-sdk/provider";
 import { generateText, streamText, toUIMessageStream } from "ai";
 import { describe, expect, it } from "vitest";
 import { createOpenGateway } from "./opengateway";
+import type { OpenGatewayReasoningDetailsStore } from "./reasoning-roundtrip-store";
 
 const reasoningDetails = [
   { data: "encrypted-mini", format: "minimax", type: "reasoning.encrypted" },
@@ -131,6 +133,60 @@ describe("OpenGateway streamed text reasoning round-trip", () => {
       messages: [
         { role: "user", content: "first" },
         ...firstStep.response.messages,
+        { role: "user", content: "continue" },
+      ],
+    });
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.messages).toContainEqual(
+      expect.objectContaining({
+        reasoning_details: [...reasoningDetails, ...laterReasoningDetails],
+        role: "assistant",
+      })
+    );
+  });
+
+  it("can replay persisted reasoningDetailsRef values through a durable store", async () => {
+    const storedDetails = new Map<string, readonly JSONValue[]>();
+    const reasoningDetailsStore: OpenGatewayReasoningDetailsStore = {
+      load(ref) {
+        return storedDetails.get(ref);
+      },
+      store(details) {
+        const ref = `durable-ref-${storedDetails.size + 1}`;
+        storedDetails.set(ref, [...details]);
+        return ref;
+      },
+    };
+    const { bodies, fetch } = captureBodies([
+      textReasoningDetailsOnlyStreamResponse(),
+      completionResponse("done"),
+    ]);
+    const opengateway = createOpenGateway({
+      apiKey: "k",
+      fetch,
+      reasoningDetailsStore,
+    });
+
+    const first = streamText({
+      model: opengateway("minimax/MiniMax-M2.7"),
+      prompt: "answer briefly",
+    });
+
+    await first.consumeStream();
+    const firstStep = await first.finalStep;
+    const persistedMessages = JSON.parse(
+      JSON.stringify(firstStep.response.messages)
+    );
+    expect(JSON.stringify(persistedMessages)).toContain("durable-ref-");
+    expect(JSON.stringify(persistedMessages)).not.toContain("encrypted-mini");
+    expect(JSON.stringify(persistedMessages)).not.toContain("encrypted-later");
+
+    await generateText({
+      model: opengateway("minimax/MiniMax-M2.7"),
+      messages: [
+        { role: "user", content: "first" },
+        ...persistedMessages,
         { role: "user", content: "continue" },
       ],
     });

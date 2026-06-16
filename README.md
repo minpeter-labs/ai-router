@@ -180,10 +180,29 @@ OpenGateway `message.reasoning_content` is exposed through the AI SDK's
 Model-specific `message.reasoning_details` and `extra.routing` are preserved
 under `providerMetadata.opengateway`. For multi-step stream round-trips, response
 message parts carry an opaque `providerOptions.opengateway.reasoningDetailsRef`
-instead of the raw details, and the provider resolves that server-side ref back
-to the OpenGateway request field `message.reasoning_details`. Callers that
-already persist raw details can still send
-`providerOptions.opengateway.reasoningDetails` directly.
+instead of the raw details, and the provider resolves that ref back to the
+OpenGateway request field `message.reasoning_details`. The default ref store is
+scoped to the `createOpenGateway()` provider instance and bounded by TTL/entry
+count. If you persist `response.messages` across workers or restarts, provide a
+durable `reasoningDetailsStore`; callers that already persist raw details can
+also send `providerOptions.opengateway.reasoningDetails` directly.
+
+```ts
+const store = new Map<string, unknown[]>();
+
+const opengateway = createOpenGateway({
+  reasoningDetailsStore: {
+    store(details) {
+      const ref = crypto.randomUUID();
+      store.set(ref, [...details]);
+      return ref;
+    },
+    load(ref) {
+      return store.get(ref);
+    },
+  },
+});
+```
 
 ## License
 

@@ -6,7 +6,13 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 
 import { createOpenGatewayMetadataExtractor } from "./metadata";
-import { opengatewayReasoningRoundtripMiddleware } from "./reasoning-roundtrip";
+import { createOpenGatewayReasoningRoundtripMiddleware } from "./reasoning-roundtrip";
+import {
+  createOpenGatewayReasoningDetailsStore,
+  type OpenGatewayReasoningDetailsStore,
+} from "./reasoning-roundtrip-store";
+
+export type { OpenGatewayReasoningDetailsStore } from "./reasoning-roundtrip-store";
 
 const DEFAULT_BASE_URL = "https://apis.opengateway.ai/v1";
 
@@ -19,6 +25,9 @@ export interface CreateOpenGatewaySettings
   apiKey?: string;
   /** Override the base URL. Defaults to the OpenGateway v1 endpoint. */
   baseURL?: string;
+  reasoningDetailsRefMaxEntries?: number;
+  reasoningDetailsRefTtlMs?: number;
+  reasoningDetailsStore?: OpenGatewayReasoningDetailsStore;
 }
 
 /**
@@ -36,7 +45,15 @@ export interface CreateOpenGatewaySettings
 export function createOpenGateway(
   settings: CreateOpenGatewaySettings = {}
 ): (modelId: string) => LanguageModelV4 {
-  const { apiKey, baseURL, metadataExtractor, ...rest } = settings;
+  const {
+    apiKey,
+    baseURL,
+    metadataExtractor,
+    reasoningDetailsRefMaxEntries,
+    reasoningDetailsRefTtlMs,
+    reasoningDetailsStore,
+    ...rest
+  } = settings;
   const provider = createOpenAICompatible({
     ...rest,
     name: "opengateway",
@@ -44,9 +61,19 @@ export function createOpenGateway(
     apiKey: apiKey ?? process.env.OPENGATEWAY_API_KEY,
     metadataExtractor: createOpenGatewayMetadataExtractor(metadataExtractor),
   });
+  const resolvedReasoningDetailsStore =
+    reasoningDetailsStore ??
+    createOpenGatewayReasoningDetailsStore({
+      maxEntries: reasoningDetailsRefMaxEntries,
+      ttlMs: reasoningDetailsRefTtlMs,
+    });
+  const reasoningRoundtripMiddleware =
+    createOpenGatewayReasoningRoundtripMiddleware({
+      reasoningDetailsStore: resolvedReasoningDetailsStore,
+    });
   return (modelId: string) =>
     wrapLanguageModel({
       model: provider(modelId),
-      middleware: opengatewayReasoningRoundtripMiddleware,
+      middleware: reasoningRoundtripMiddleware,
     });
 }

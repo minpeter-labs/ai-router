@@ -5,8 +5,8 @@ import type {
   SharedV4ProviderMetadata,
 } from "@ai-sdk/provider";
 import {
+  type OpenGatewayReasoningDetailsStore,
   REASONING_DETAILS_REF_KEY,
-  storeReasoningDetails,
 } from "./reasoning-roundtrip-store";
 
 const OPENGATEWAY_KEY = "opengateway";
@@ -15,65 +15,72 @@ function assertNever(value: never): never {
   throw new TypeError(`Unsupported OpenGateway reasoning variant: ${value}`);
 }
 
-function withOpenGatewayReasoningMetadata(
+async function withOpenGatewayReasoningMetadata(
   metadata: SharedV4ProviderMetadata | undefined,
-  details: readonly JSONValue[]
-): SharedV4ProviderMetadata {
+  details: readonly JSONValue[],
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<SharedV4ProviderMetadata> {
+  const ref = await reasoningDetailsStore.store(details);
   return {
     ...(metadata ?? {}),
     [OPENGATEWAY_KEY]: {
       ...(metadata?.[OPENGATEWAY_KEY] ?? {}),
-      [REASONING_DETAILS_REF_KEY]: storeReasoningDetails(details),
+      [REASONING_DETAILS_REF_KEY]: ref,
     },
   };
 }
 
-function withDetailsOnContentPart(
+async function withDetailsOnContentPart(
   part: LanguageModelV4Content,
-  details: readonly JSONValue[]
-): LanguageModelV4Content {
+  details: readonly JSONValue[],
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<LanguageModelV4Content> {
   return {
     ...part,
-    providerMetadata: withOpenGatewayReasoningMetadata(
+    providerMetadata: await withOpenGatewayReasoningMetadata(
       part.providerMetadata,
-      details
+      details,
+      reasoningDetailsStore
     ),
   };
 }
 
-export function withReasoningDetailsOnContent(
+export async function withReasoningDetailsOnContent(
   content: LanguageModelV4Content[],
-  details: readonly JSONValue[]
-): LanguageModelV4Content[] {
+  details: readonly JSONValue[],
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<LanguageModelV4Content[]> {
   if (details.length === 0) {
     return content;
   }
 
   const hasReasoning = content.some((part) => part.type === "reasoning");
   let attachedToText = false;
-  const nextContent = content.map((part) => {
-    switch (part.type) {
-      case "reasoning":
-        return withDetailsOnContentPart(part, details);
-      case "text": {
-        if (hasReasoning || attachedToText) {
-          return part;
+  const nextContent = await Promise.all(
+    content.map((part) => {
+      switch (part.type) {
+        case "reasoning":
+          return withDetailsOnContentPart(part, details, reasoningDetailsStore);
+        case "text": {
+          if (hasReasoning || attachedToText) {
+            return part;
+          }
+          attachedToText = true;
+          return withDetailsOnContentPart(part, details, reasoningDetailsStore);
         }
-        attachedToText = true;
-        return withDetailsOnContentPart(part, details);
+        case "custom":
+        case "file":
+        case "reasoning-file":
+        case "source":
+        case "tool-approval-request":
+        case "tool-call":
+        case "tool-result":
+          return part;
+        default:
+          return assertNever(part);
       }
-      case "custom":
-      case "file":
-      case "reasoning-file":
-      case "source":
-      case "tool-approval-request":
-      case "tool-call":
-      case "tool-result":
-        return part;
-      default:
-        return assertNever(part);
-    }
-  });
+    })
+  );
 
   return hasReasoning || attachedToText
     ? nextContent
@@ -82,18 +89,20 @@ export function withReasoningDetailsOnContent(
         {
           type: "reasoning",
           text: "",
-          providerMetadata: withOpenGatewayReasoningMetadata(
+          providerMetadata: await withOpenGatewayReasoningMetadata(
             undefined,
-            details
+            details,
+            reasoningDetailsStore
           ),
         },
       ];
 }
 
-export function withReasoningPartMetadata(
+export async function withReasoningPartMetadata(
   part: LanguageModelV4StreamPart,
-  details: readonly JSONValue[]
-): LanguageModelV4StreamPart {
+  details: readonly JSONValue[],
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<LanguageModelV4StreamPart> {
   if (details.length === 0) {
     return part;
   }
@@ -108,9 +117,10 @@ export function withReasoningPartMetadata(
     case "tool-call":
       return {
         ...part,
-        providerMetadata: withOpenGatewayReasoningMetadata(
+        providerMetadata: await withOpenGatewayReasoningMetadata(
           part.providerMetadata,
-          details
+          details,
+          reasoningDetailsStore
         ),
       };
     case "custom":

@@ -14,8 +14,9 @@ import {
   withReasoningPartMetadata,
 } from "./reasoning-roundtrip-output";
 import {
+  createOpenGatewayReasoningDetailsStore,
+  type OpenGatewayReasoningDetailsStore,
   REASONING_DETAILS_REF_KEY,
-  resolveReasoningDetailsRef,
 } from "./reasoning-roundtrip-store";
 
 const OPENGATEWAY_KEY = "opengateway";
@@ -55,16 +56,20 @@ function appendJsonDetails(target: JSONValue[], value: unknown): void {
   }
 }
 
-function appendReasoningDetailsFromOptions(
+async function appendReasoningDetailsFromOptions(
   target: JSONValue[],
-  options?: SharedV4ProviderOptions
-): void {
+  options: SharedV4ProviderOptions | undefined,
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<void> {
   const opengateway = options?.[OPENGATEWAY_KEY];
   appendJsonDetails(target, opengateway?.[REASONING_DETAILS_KEY]);
   appendJsonDetails(target, opengateway?.[REASONING_DETAILS_REQUEST_KEY]);
   const ref = opengateway?.[REASONING_DETAILS_REF_KEY];
   if (typeof ref === "string") {
-    appendUniqueJsonDetails(target, resolveReasoningDetailsRef(ref));
+    const details = await reasoningDetailsStore.load(ref);
+    if (details != null) {
+      appendUniqueJsonDetails(target, details);
+    }
   }
 }
 
@@ -93,15 +98,24 @@ function withOpenAICompatibleReasoningDetails(
   };
 }
 
-function collectMessageReasoningDetails(
-  message: LanguageModelV4Message
-): JSONValue[] {
+async function collectMessageReasoningDetails(
+  message: LanguageModelV4Message,
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<JSONValue[]> {
   switch (message.role) {
     case "assistant": {
       const details: JSONValue[] = [];
-      appendReasoningDetailsFromOptions(details, message.providerOptions);
+      await appendReasoningDetailsFromOptions(
+        details,
+        message.providerOptions,
+        reasoningDetailsStore
+      );
       for (const part of message.content) {
-        appendReasoningDetailsFromOptions(details, part.providerOptions);
+        await appendReasoningDetailsFromOptions(
+          details,
+          part.providerOptions,
+          reasoningDetailsStore
+        );
       }
       return details;
     }
@@ -114,10 +128,14 @@ function collectMessageReasoningDetails(
   }
 }
 
-function withReasoningDetailsOnMessage(
-  message: LanguageModelV4Message
-): LanguageModelV4Message {
-  const details = collectMessageReasoningDetails(message);
+async function withReasoningDetailsOnMessage(
+  message: LanguageModelV4Message,
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<LanguageModelV4Message> {
+  const details = await collectMessageReasoningDetails(
+    message,
+    reasoningDetailsStore
+  );
   if (details.length === 0) {
     return message;
   }
@@ -141,9 +159,14 @@ function withReasoningDetailsOnMessage(
 }
 
 function withReasoningDetailsOnPrompt(
-  prompt: LanguageModelV4Prompt
-): LanguageModelV4Prompt {
-  return prompt.map(withReasoningDetailsOnMessage);
+  prompt: LanguageModelV4Prompt,
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): Promise<LanguageModelV4Prompt> {
+  return Promise.all(
+    prompt.map((message) =>
+      withReasoningDetailsOnMessage(message, reasoningDetailsStore)
+    )
+  );
 }
 
 function isReasoningStreamPart(part: LanguageModelV4StreamPart): boolean {
@@ -169,14 +192,23 @@ function detailsSince(
   return details.slice(count);
 }
 
-export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
-  {
+export interface OpenGatewayReasoningRoundtripMiddlewareSettings {
+  reasoningDetailsStore?: OpenGatewayReasoningDetailsStore;
+}
+
+export function createOpenGatewayReasoningRoundtripMiddleware({
+  reasoningDetailsStore = createOpenGatewayReasoningDetailsStore(),
+}: OpenGatewayReasoningRoundtripMiddlewareSettings = {}): LanguageModelMiddleware {
+  return {
     specificationVersion: "v4",
-    transformParams({ params }) {
-      return Promise.resolve({
+    async transformParams({ params }) {
+      return {
         ...params,
-        prompt: withReasoningDetailsOnPrompt(params.prompt),
-      });
+        prompt: await withReasoningDetailsOnPrompt(
+          params.prompt,
+          reasoningDetailsStore
+        ),
+      };
     },
     async wrapGenerate({ doGenerate }) {
       const result = await doGenerate();
@@ -185,9 +217,10 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
       );
       return {
         ...result,
-        content: withReasoningDetailsOnContent(
+        content: await withReasoningDetailsOnContent(
           result.content,
-          reasoningDetails
+          reasoningDetails,
+          reasoningDetailsStore
         ),
       };
     },
@@ -201,7 +234,7 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
       let carriedReasoningDetailsCount = 0;
       let pendingToolCall: LanguageModelV4StreamPart | undefined;
 
-      const enqueuePendingToolCall = (
+      const enqueuePendingToolCall = async (
         controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
       ) => {
         if (pendingToolCall === undefined) {
@@ -214,7 +247,11 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
         );
         carriedReasoningDetailsCount = reasoningDetails.length;
         controller.enqueue(
-          withReasoningPartMetadata(pendingToolCall, uncarriedReasoningDetails)
+          await withReasoningPartMetadata(
+            pendingToolCall,
+            uncarriedReasoningDetails,
+            reasoningDetailsStore
+          )
         );
         pendingToolCall = undefined;
       };
@@ -226,13 +263,13 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
             LanguageModelV4StreamPart,
             LanguageModelV4StreamPart
           >({
-            transform(part, controller) {
+            async transform(part, controller) {
               if (part.type === "raw") {
                 appendUniqueJsonDetails(
                   reasoningDetails,
                   collectChoiceReasoningDetails(part.rawValue)
                 );
-                enqueuePendingToolCall(controller);
+                await enqueuePendingToolCall(controller);
                 if (includeRawChunks) {
                   controller.enqueue(part);
                 }
@@ -240,17 +277,21 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
               }
 
               if (part.type === "tool-call") {
-                enqueuePendingToolCall(controller);
+                await enqueuePendingToolCall(controller);
                 pendingToolCall = part;
                 return;
               }
 
-              enqueuePendingToolCall(controller);
+              await enqueuePendingToolCall(controller);
 
               if (isReasoningStreamPart(part)) {
                 carriedReasoningDetailsCount = reasoningDetails.length;
                 controller.enqueue(
-                  withReasoningPartMetadata(part, reasoningDetails)
+                  await withReasoningPartMetadata(
+                    part,
+                    reasoningDetails,
+                    reasoningDetailsStore
+                  )
                 );
                 return;
               }
@@ -258,18 +299,23 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
               if (isTextStreamPart(part)) {
                 carriedReasoningDetailsCount = reasoningDetails.length;
                 controller.enqueue(
-                  withReasoningPartMetadata(part, reasoningDetails)
+                  await withReasoningPartMetadata(
+                    part,
+                    reasoningDetails,
+                    reasoningDetailsStore
+                  )
                 );
                 return;
               }
 
               controller.enqueue(part);
             },
-            flush(controller) {
-              enqueuePendingToolCall(controller);
+            async flush(controller) {
+              await enqueuePendingToolCall(controller);
             },
           })
         ),
       };
     },
   };
+}
