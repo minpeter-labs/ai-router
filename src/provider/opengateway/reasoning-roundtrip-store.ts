@@ -20,13 +20,17 @@ export interface OpenGatewayReasoningDetailsStoreSettings {
 }
 
 interface StoredReasoningDetails {
-  readonly details: JSONValue[];
+  readonly details: readonly JSONValue[];
   readonly expiresAt: number;
 }
 
 const DEFAULT_MAX_ENTRIES = 1000;
 const DEFAULT_REF_PREFIX = "opengateway-reasoning";
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
+
+function detailsKey(details: readonly JSONValue[]): string {
+  return JSON.stringify(details) ?? "undefined";
+}
 
 function createRandomRef(prefix: string): string {
   if (globalThis.crypto?.randomUUID != null) {
@@ -96,6 +100,30 @@ export function createOpenGatewayReasoningDetailsStore({
       });
       pruneOverflow();
 
+      return ref;
+    },
+  };
+}
+
+export function createOpenGatewayReasoningDetailsStoreMemo(
+  reasoningDetailsStore: OpenGatewayReasoningDetailsStore
+): OpenGatewayReasoningDetailsStore {
+  const refsByDetails = new Map<string, Promise<string>>();
+
+  return {
+    load(ref) {
+      return reasoningDetailsStore.load(ref);
+    },
+    store(details) {
+      const detailsSnapshot = [...details];
+      const key = detailsKey(detailsSnapshot);
+      const cachedRef = refsByDetails.get(key);
+      if (cachedRef !== undefined) {
+        return cachedRef;
+      }
+
+      const ref = Promise.resolve(reasoningDetailsStore.store(detailsSnapshot));
+      refsByDetails.set(key, ref);
       return ref;
     },
   };

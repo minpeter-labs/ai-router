@@ -18,7 +18,7 @@ function jsonValueKey(value: JSONValue): string {
   return JSON.stringify(value) ?? "undefined";
 }
 
-function appendUniqueJsonDetails(
+export function appendUniqueJsonDetails(
   target: JSONValue[],
   details: readonly JSONValue[]
 ): void {
@@ -74,17 +74,10 @@ function extractRouting(body: unknown): JSONValue | undefined {
   return isJSONValue(body.routing) ? body.routing : undefined;
 }
 
-function buildOpenGatewayMetadata({
-  reasoningDetails,
-  routing,
-}: {
-  reasoningDetails: JSONValue[];
-  routing?: JSONValue;
-}): SharedV4ProviderMetadata | undefined {
+function buildOpenGatewayMetadata(
+  routing: JSONValue | undefined
+): SharedV4ProviderMetadata | undefined {
   const metadata: JSONObject = {};
-  if (reasoningDetails.length > 0) {
-    metadata.reasoningDetails = reasoningDetails;
-  }
   if (routing !== undefined) {
     metadata.routing = routing;
   }
@@ -96,10 +89,7 @@ function buildOpenGatewayMetadata({
 function extractOpenGatewayMetadata(
   body: unknown
 ): SharedV4ProviderMetadata | undefined {
-  return buildOpenGatewayMetadata({
-    reasoningDetails: collectChoiceReasoningDetails(body),
-    routing: extractRouting(body),
-  });
+  return buildOpenGatewayMetadata(extractRouting(body));
 }
 
 function mergeProviderMetadata(
@@ -134,26 +124,18 @@ export function createOpenGatewayMetadataExtractor(
     },
     createStreamExtractor() {
       const userStreamExtractor = userExtractor?.createStreamExtractor();
-      const reasoningDetails: JSONValue[] = [];
       let routing: JSONValue | undefined;
 
       return {
         processChunk(parsedChunk) {
           userStreamExtractor?.processChunk(parsedChunk);
-          appendUniqueJsonDetails(
-            reasoningDetails,
-            collectChoiceReasoningDetails(parsedChunk)
-          );
           const chunkRouting = extractRouting(parsedChunk);
           if (chunkRouting !== undefined) {
             routing = chunkRouting;
           }
         },
         buildMetadata() {
-          const opengatewayMetadata = buildOpenGatewayMetadata({
-            reasoningDetails,
-            routing,
-          });
+          const opengatewayMetadata = buildOpenGatewayMetadata(routing);
           const userMetadata = userStreamExtractor?.buildMetadata();
           return mergeProviderMetadata(opengatewayMetadata, userMetadata);
         },

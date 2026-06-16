@@ -176,19 +176,22 @@ await streamText({
 ```
 
 OpenGateway `message.reasoning_content` is exposed through the AI SDK's
-`reasoningText`/`finalStep.reasoningText` when a routed model returns it.
-Model-specific `message.reasoning_details` and `extra.routing` are preserved
-under `providerMetadata.opengateway`. For multi-step stream round-trips, response
-message parts carry an opaque `providerOptions.opengateway.reasoningDetailsRef`
-instead of the raw details, and the provider resolves that ref back to the
-OpenGateway request field `message.reasoning_details`. The default ref store is
-scoped to the `createOpenGateway()` provider instance and bounded by TTL/entry
-count. If you persist `response.messages` across workers or restarts, provide a
-durable `reasoningDetailsStore`; callers that already persist raw details can
-also send `providerOptions.opengateway.reasoningDetails` directly.
+`reasoningText`/`finalStep.reasoningText` when a routed model returns it, and
+`extra.routing` is preserved under `providerMetadata.opengateway`. By default,
+model-specific `message.reasoning_details` is not exposed as raw public metadata:
+response message parts carry an opaque
+`providerOptions.opengateway.reasoningDetailsRef`, and the provider resolves that
+ref back to the OpenGateway request field `message.reasoning_details`. The
+default ref store is scoped to the `createOpenGateway()` provider instance and
+bounded by TTL/entry count. If you persist `response.messages` across workers or
+restarts, provide a durable `reasoningDetailsStore`; callers that already persist
+raw details can also send `providerOptions.opengateway.reasoningDetails`
+directly.
 
 ```ts
-const store = new Map<string, unknown[]>();
+import type { JSONValue } from '@ai-sdk/provider';
+
+const store = new Map<string, readonly JSONValue[]>();
 
 const opengateway = createOpenGateway({
   reasoningDetailsStore: {

@@ -98,7 +98,7 @@ function opengatewayReasoningStreamResponse(): Response {
 }
 
 describe("OpenGateway reasoning metadata", () => {
-  it("preserves OpenGateway reasoning fields on generateText results", async () => {
+  it("exposes reasoning text and routing without raw reasoning_details metadata", async () => {
     const fetch: typeof globalThis.fetch = () =>
       Promise.resolve(opengatewayReasoningResponse());
     const opengateway = createOpenGateway({ apiKey: "k", fetch });
@@ -112,11 +112,20 @@ describe("OpenGateway reasoning metadata", () => {
     expect(result.text).toBe("visible answer");
     expect(result.finalStep.reasoningText).toBe("concise reasoning");
     expect(result.finalStep.providerMetadata?.opengateway).toMatchObject({
-      reasoningDetails: [
-        { type: "reasoning.summary", text: "model-specific detail" },
-      ],
       routing: { route: "openai", model: "gpt-5-mini" },
     });
+    expect(
+      result.finalStep.providerMetadata?.opengateway?.reasoningDetails
+    ).toBeUndefined();
+    expect(result.finalStep.reasoning).toContainEqual(
+      expect.objectContaining({
+        providerOptions: {
+          opengateway: { reasoningDetailsRef: expect.any(String) },
+        },
+        text: "concise reasoning",
+        type: "reasoning",
+      })
+    );
   });
 
   it("composes OpenGateway metadata with a user metadataExtractor", async () => {
@@ -155,16 +164,16 @@ describe("OpenGateway reasoning metadata", () => {
     expect(result.finalStep.providerMetadata).toMatchObject({
       opengateway: {
         custom: "kept",
-        reasoningDetails: [
-          { type: "reasoning.summary", text: "model-specific detail" },
-        ],
         routing: { route: "openai", model: "gpt-5-mini" },
       },
       custom: { marker: "kept" },
     });
+    expect(
+      result.finalStep.providerMetadata?.opengateway?.reasoningDetails
+    ).toBeUndefined();
   });
 
-  it("keeps model-specific reasoning_details even without reasoning_content", async () => {
+  it("keeps model-specific reasoning_details ref-only without reasoning_content", async () => {
     const fetch: typeof globalThis.fetch = () =>
       Promise.resolve(opengatewayReasoningDetailsOnlyResponse());
     const opengateway = createOpenGateway({ apiKey: "k", fetch });
@@ -177,12 +186,18 @@ describe("OpenGateway reasoning metadata", () => {
 
     expect(result.text).toBe("visible answer");
     expect(result.finalStep.reasoningText).toBeUndefined();
-    expect(result.finalStep.providerMetadata?.opengateway).toMatchObject({
-      reasoningDetails: [{ provider: "google", encrypted: true }],
-    });
+    expect(
+      result.finalStep.providerMetadata?.opengateway?.reasoningDetails
+    ).toBeUndefined();
+    expect(JSON.stringify(result.finalStep.response.messages)).toContain(
+      "reasoningDetailsRef"
+    );
+    expect(JSON.stringify(result.finalStep.response.messages)).not.toContain(
+      "encrypted"
+    );
   });
 
-  it("preserves OpenGateway reasoning metadata on streamText results", async () => {
+  it("preserves OpenGateway routing metadata on streamText results", async () => {
     const fetch: typeof globalThis.fetch = () =>
       Promise.resolve(opengatewayReasoningStreamResponse());
     const opengateway = createOpenGateway({ apiKey: "k", fetch });
@@ -203,11 +218,11 @@ describe("OpenGateway reasoning metadata", () => {
     );
     expect(finalStep.providerMetadata).toMatchObject({
       opengateway: {
-        reasoningDetails: [
-          { type: "reasoning.summary", text: "stream detail" },
-        ],
         routing: { route: "openai", model: "gpt-5-mini" },
       },
     });
+    expect(
+      finalStep.providerMetadata?.opengateway?.reasoningDetails
+    ).toBeUndefined();
   });
 });
