@@ -248,13 +248,9 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
               }
 
               if (isTextStreamPart(part)) {
-                const uncarriedReasoningDetails = detailsSince(
-                  reasoningDetails,
-                  carriedReasoningDetailsCount
-                );
                 carriedReasoningDetailsCount = reasoningDetails.length;
                 controller.enqueue(
-                  withReasoningPartMetadata(part, uncarriedReasoningDetails)
+                  withReasoningPartMetadata(part, reasoningDetails)
                 );
                 return;
               }

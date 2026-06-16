@@ -5,6 +5,9 @@ import { createOpenGateway } from "./opengateway";
 const reasoningDetails = [
   { data: "encrypted-mini", format: "minimax", type: "reasoning.encrypted" },
 ];
+const laterReasoningDetails = [
+  { data: "encrypted-later", format: "minimax", type: "reasoning.encrypted" },
+];
 
 function completionResponse(content: string): Response {
   return Response.json({
@@ -45,7 +48,22 @@ function textReasoningDetailsOnlyStreamResponse(): Response {
       object: "chat.completion.chunk",
       created: 0,
       model: "minimax/MiniMax-M2.7",
-      choices: [{ index: 0, delta: { content: "stream answer" } }],
+      choices: [{ index: 0, delta: { content: "stream " } }],
+    },
+    {
+      id: "chatcmpl-og-stream-text",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "minimax/MiniMax-M2.7",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            content: "answer",
+            reasoning_details: laterReasoningDetails,
+          },
+        },
+      ],
     },
     {
       id: "chatcmpl-og-stream-text",
@@ -106,7 +124,7 @@ describe("OpenGateway streamed text reasoning round-trip", () => {
     expect(bodies).toHaveLength(2);
     expect(bodies[1]?.messages).toContainEqual(
       expect.objectContaining({
-        reasoning_details: reasoningDetails,
+        reasoning_details: [...reasoningDetails, ...laterReasoningDetails],
         role: "assistant",
       })
     );
