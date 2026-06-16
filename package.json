@@ -39,6 +39,12 @@
       "require": "./dist/openrouter.cjs",
       "default": "./dist/openrouter.js"
     },
+    "./opengateway": {
+      "types": "./dist/opengateway.d.ts",
+      "import": "./dist/opengateway.js",
+      "require": "./dist/opengateway.cjs",
+      "default": "./dist/opengateway.js"
+    },
     "./wafer": {
       "types": "./dist/wafer.d.ts",
       "import": "./dist/wafer.js",
@@ -93,6 +99,7 @@
     "openai-compatible",
     "friendli",
     "openrouter",
+    "opengateway",
     "wafer"
   ]
 }

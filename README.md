@@ -134,25 +134,37 @@ const chat = route('kimi'); // reuse this instance across requests
 
 ## Providers
 
-`./friendli`, `./openrouter`, and `./wafer` are thin `@ai-sdk/openai-compatible`
-wrappers that translate the AI SDK's reasoning request into each provider's
-native field (and strip the foreign `reasoning_effort`):
+`./friendli`, `./opengateway`, `./openrouter`, and `./wafer` are thin
+`@ai-sdk/openai-compatible` wrappers that translate the AI SDK's reasoning
+request into each provider's native field (and strip unsupported foreign
+reasoning fields):
 
-| Provider   | becomes                                                 |
-| ---------- | ------------------------------------------------------- |
-| Friendli   | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
-| OpenRouter | `reasoning.enabled: boolean`                            |
-| Wafer      | `reasoning_effort: <level>` (on) / `thinking.type: 'disabled'` (off) |
+| Provider    | becomes                                                  |
+| ----------- | -------------------------------------------------------- |
+| Friendli    | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
+| OpenGateway | `reasoning_effort: "minimal", "low", "medium", ...`      |
+| OpenRouter  | `reasoning.enabled: boolean`                             |
+| Wafer       | `reasoning_effort: <level>` (on) / `thinking.type: 'disabled'` (off) |
+
+OpenGateway keeps OpenGateway's OpenAI-compatible reasoning surface and lets the
+AI SDK omit `reasoning: 'none'` instead of sending a model-specific unsupported
+`reasoning_effort` value. OpenGateway also round-trips assistant
+`reasoning_content` and `reasoning_details` through AI SDK multi-step /
+multi-turn messages.
 
 Wafer keeps the granular effort level rather than collapsing to on/off:
 `low`/`medium`/`high` pass through, AI SDK `minimal` maps to `low`, AI SDK
 `xhigh` maps to Wafer's `max`, and Wafer's extra `max` level is reachable via
 `providerOptions.wafer.reasoningEffort: 'max'`. `MiniMax-M3` returns reasoning
-inline as `<think>…</think>`, which the provider extracts into a reasoning part.
-Preserving previous `reasoning_content` into later turns is separate and is
-controlled by `createWafer({ preserveReasoning })`.
+inline as `<think>...</think>`, which the provider extracts into a reasoning
+part. Preserving previous `reasoning_content` into later turns is separate and
+is controlled by `createWafer({ preserveReasoning })`.
 
 ```ts
+import { createFriendli } from '@minpeter/ai-router/friendli';
+import { createOpenGateway } from '@minpeter/ai-router/opengateway';
+import { streamText } from 'ai';
+
 // The plain `reasoning` option drives it on AND off — no providerOptions needed.
 // (A built-in transformParams middleware keeps `reasoning: 'none'` alive, which
 // the AI SDK would otherwise drop before the wrapper sees it.)
@@ -167,7 +179,50 @@ await streamText({
   reasoning: 'none', // -> thinking = false
   prompt: '...',
 });
+
+await streamText({
+  model: createOpenGateway()('openai/gpt-4o-mini'),
+  reasoning: 'high', // -> reasoning_effort = "high"
+  prompt: '...',
+});
 ```
+
+OpenGateway `message.reasoning_content` is exposed through the AI SDK's
+`reasoningText`/`finalStep.reasoningText` when a routed model returns it, and
+`extra.routing` is preserved under `providerMetadata.opengateway`. By default,
+model-specific `message.reasoning_details` is not exposed as raw public metadata:
+response message parts carry an opaque
+`providerOptions.opengateway.reasoningDetailsRef`, and the provider resolves that
+ref back to the OpenGateway request field `message.reasoning_details`. The
+default ref store is scoped to the `createOpenGateway()` provider instance and
+bounded by TTL/entry count. If you persist `response.messages` across workers or
+restarts, provide a durable `reasoningDetailsStore`; callers that already persist
+raw details can also send `providerOptions.opengateway.reasoningDetails`
+directly.
+
+```ts
+import type { JSONValue } from '@ai-sdk/provider';
+
+const store = new Map<string, readonly JSONValue[]>();
+
+const opengateway = createOpenGateway({
+  reasoningDetailsStore: {
+    store(details) {
+      const ref = crypto.randomUUID();
+      store.set(ref, [...details]);
+      return ref;
+    },
+    load(ref) {
+      return store.get(ref);
+    },
+  },
+});
+```
+
+The OpenGateway live diagnostic scripts use `OPENGATEWAY_API_KEY` and default to
+`https://apis.opengateway.ai/v1`. If you set `AI_BASE_URL` to a proxy or custom
+host, also set `OPENGATEWAY_ALLOW_CUSTOM_BASE_URL=1`; otherwise the scripts
+refuse to send the bearer token outside `*.opengateway.ai`.
 
 ### Wafer Preserved Reasoning
 
