@@ -14,6 +14,24 @@ function asJsonList(value: JSONValue): JSONValue[] {
   return isJSONArray(value) ? value : [value];
 }
 
+function jsonValueKey(value: JSONValue): string {
+  return JSON.stringify(value) ?? "undefined";
+}
+
+function appendUniqueJsonDetails(
+  target: JSONValue[],
+  details: readonly JSONValue[]
+): void {
+  const seen = new Set(target.map(jsonValueKey));
+  for (const detail of details) {
+    const key = jsonValueKey(detail);
+    if (!seen.has(key)) {
+      seen.add(key);
+      target.push(detail);
+    }
+  }
+}
+
 export function collectChoiceReasoningDetails(body: unknown): JSONValue[] {
   if (!isJSONObject(body)) {
     return [];
@@ -32,12 +50,12 @@ export function collectChoiceReasoningDetails(body: unknown): JSONValue[] {
 
     const message = choice.message;
     if (isJSONObject(message) && isJSONValue(message.reasoning_details)) {
-      details.push(...asJsonList(message.reasoning_details));
+      appendUniqueJsonDetails(details, asJsonList(message.reasoning_details));
     }
 
     const delta = choice.delta;
     if (isJSONObject(delta) && isJSONValue(delta.reasoning_details)) {
-      details.push(...asJsonList(delta.reasoning_details));
+      appendUniqueJsonDetails(details, asJsonList(delta.reasoning_details));
     }
   }
   return details;
@@ -122,7 +140,10 @@ export function createOpenGatewayMetadataExtractor(
       return {
         processChunk(parsedChunk) {
           userStreamExtractor?.processChunk(parsedChunk);
-          reasoningDetails.push(...collectChoiceReasoningDetails(parsedChunk));
+          appendUniqueJsonDetails(
+            reasoningDetails,
+            collectChoiceReasoningDetails(parsedChunk)
+          );
           const chunkRouting = extractRouting(parsedChunk);
           if (chunkRouting !== undefined) {
             routing = chunkRouting;

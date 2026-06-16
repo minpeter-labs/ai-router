@@ -27,20 +27,37 @@ function asJsonList(value: JSONValue): JSONValue[] {
   return isJSONArray(value) ? value : [value];
 }
 
-function appendJsonDetails(target: JSONValue[], value: unknown): void {
-  if (isJSONValue(value)) {
-    target.push(...asJsonList(value));
+function jsonValueKey(value: JSONValue): string {
+  return JSON.stringify(value) ?? "undefined";
+}
+
+function appendUniqueJsonDetails(
+  target: JSONValue[],
+  details: readonly JSONValue[]
+): void {
+  const seen = new Set(target.map(jsonValueKey));
+  for (const detail of details) {
+    const key = jsonValueKey(detail);
+    if (!seen.has(key)) {
+      seen.add(key);
+      target.push(detail);
+    }
   }
 }
 
-function reasoningDetailsFromOptions(
+function appendJsonDetails(target: JSONValue[], value: unknown): void {
+  if (isJSONValue(value)) {
+    appendUniqueJsonDetails(target, asJsonList(value));
+  }
+}
+
+function appendReasoningDetailsFromOptions(
+  target: JSONValue[],
   options?: SharedV4ProviderOptions
-): JSONValue[] {
-  const details: JSONValue[] = [];
+): void {
   const opengateway = options?.[OPENGATEWAY_KEY];
-  appendJsonDetails(details, opengateway?.[REASONING_DETAILS_KEY]);
-  appendJsonDetails(details, opengateway?.[REASONING_DETAILS_REQUEST_KEY]);
-  return details;
+  appendJsonDetails(target, opengateway?.[REASONING_DETAILS_KEY]);
+  appendJsonDetails(target, opengateway?.[REASONING_DETAILS_REQUEST_KEY]);
 }
 
 function hasOpenAICompatibleReasoningDetails(
@@ -73,9 +90,10 @@ function collectMessageReasoningDetails(
 ): JSONValue[] {
   switch (message.role) {
     case "assistant": {
-      const details = reasoningDetailsFromOptions(message.providerOptions);
+      const details: JSONValue[] = [];
+      appendReasoningDetailsFromOptions(details, message.providerOptions);
       for (const part of message.content) {
-        details.push(...reasoningDetailsFromOptions(part.providerOptions));
+        appendReasoningDetailsFromOptions(details, part.providerOptions);
       }
       return details;
     }
@@ -120,6 +138,14 @@ function withReasoningDetailsOnPrompt(
   return prompt.map(withReasoningDetailsOnMessage);
 }
 
+function isReasoningStreamPart(part: LanguageModelV4StreamPart): boolean {
+  return (
+    part.type === "reasoning-delta" ||
+    part.type === "reasoning-end" ||
+    part.type === "reasoning-start"
+  );
+}
+
 export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
   {
     specificationVersion: "v4",
@@ -149,6 +175,7 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
         includeRawChunks: true,
       });
       const reasoningDetails: JSONValue[] = [];
+      let carriedReasoningDetailsCount = 0;
 
       return {
         ...result,
@@ -159,8 +186,9 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
           >({
             transform(part, controller) {
               if (part.type === "raw") {
-                reasoningDetails.push(
-                  ...collectChoiceReasoningDetails(part.rawValue)
+                appendUniqueJsonDetails(
+                  reasoningDetails,
+                  collectChoiceReasoningDetails(part.rawValue)
                 );
                 if (includeRawChunks) {
                   controller.enqueue(part);
@@ -168,9 +196,26 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
                 return;
               }
 
-              controller.enqueue(
-                withReasoningPartMetadata(part, reasoningDetails)
-              );
+              if (isReasoningStreamPart(part)) {
+                carriedReasoningDetailsCount = reasoningDetails.length;
+                controller.enqueue(
+                  withReasoningPartMetadata(part, reasoningDetails)
+                );
+                return;
+              }
+
+              if (part.type === "tool-call") {
+                const uncarriedReasoningDetails = reasoningDetails.slice(
+                  carriedReasoningDetailsCount
+                );
+                carriedReasoningDetailsCount = reasoningDetails.length;
+                controller.enqueue(
+                  withReasoningPartMetadata(part, uncarriedReasoningDetails)
+                );
+                return;
+              }
+
+              controller.enqueue(part);
             },
           })
         ),
