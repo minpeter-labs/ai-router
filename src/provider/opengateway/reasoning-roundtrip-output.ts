@@ -4,9 +4,12 @@ import type {
   LanguageModelV4StreamPart,
   SharedV4ProviderMetadata,
 } from "@ai-sdk/provider";
+import {
+  REASONING_DETAILS_REF_KEY,
+  storeReasoningDetails,
+} from "./reasoning-roundtrip-store";
 
 const OPENGATEWAY_KEY = "opengateway";
-const REASONING_DETAILS_KEY = "reasoningDetails";
 
 function assertNever(value: never): never {
   throw new TypeError(`Unsupported OpenGateway reasoning variant: ${value}`);
@@ -20,7 +23,7 @@ function withOpenGatewayReasoningMetadata(
     ...(metadata ?? {}),
     [OPENGATEWAY_KEY]: {
       ...(metadata?.[OPENGATEWAY_KEY] ?? {}),
-      [REASONING_DETAILS_KEY]: [...details],
+      [REASONING_DETAILS_REF_KEY]: storeReasoningDetails(details),
     },
   };
 }

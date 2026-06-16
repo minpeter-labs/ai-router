@@ -178,9 +178,12 @@ await streamText({
 OpenGateway `message.reasoning_content` is exposed through the AI SDK's
 `reasoningText`/`finalStep.reasoningText` when a routed model returns it.
 Model-specific `message.reasoning_details` and `extra.routing` are preserved
-under `providerMetadata.opengateway`. When an assistant reasoning part carrying
-`providerOptions.opengateway.reasoningDetails` is sent again, the provider
-hoists it back to the OpenGateway request field `message.reasoning_details`.
+under `providerMetadata.opengateway`. For multi-step stream round-trips, response
+message parts carry an opaque `providerOptions.opengateway.reasoningDetailsRef`
+instead of the raw details, and the provider resolves that server-side ref back
+to the OpenGateway request field `message.reasoning_details`. Callers that
+already persist raw details can still send
+`providerOptions.opengateway.reasoningDetails` directly.
 
 ## License
 

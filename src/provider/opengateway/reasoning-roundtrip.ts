@@ -13,6 +13,10 @@ import {
   withReasoningDetailsOnContent,
   withReasoningPartMetadata,
 } from "./reasoning-roundtrip-output";
+import {
+  REASONING_DETAILS_REF_KEY,
+  resolveReasoningDetailsRef,
+} from "./reasoning-roundtrip-store";
 
 const OPENGATEWAY_KEY = "opengateway";
 const OPENAI_COMPATIBLE_KEY = "openaiCompatible";
@@ -58,6 +62,10 @@ function appendReasoningDetailsFromOptions(
   const opengateway = options?.[OPENGATEWAY_KEY];
   appendJsonDetails(target, opengateway?.[REASONING_DETAILS_KEY]);
   appendJsonDetails(target, opengateway?.[REASONING_DETAILS_REQUEST_KEY]);
+  const ref = opengateway?.[REASONING_DETAILS_REF_KEY];
+  if (typeof ref === "string") {
+    appendUniqueJsonDetails(target, resolveReasoningDetailsRef(ref));
+  }
 }
 
 function hasOpenAICompatibleReasoningDetails(

@@ -1,4 +1,4 @@
-import { generateText, streamText } from "ai";
+import { generateText, streamText, toUIMessageStream } from "ai";
 import { describe, expect, it } from "vitest";
 import { createOpenGateway } from "./opengateway";
 
@@ -109,8 +109,22 @@ describe("OpenGateway streamed text reasoning round-trip", () => {
       prompt: "answer briefly",
     });
 
-    expect(await first.text).toBe("stream answer");
+    const uiChunks: unknown[] = [];
+    for await (const chunk of toUIMessageStream({ stream: first.stream })) {
+      uiChunks.push(chunk);
+    }
+    expect(JSON.stringify(uiChunks)).toContain("stream ");
+    expect(JSON.stringify(uiChunks)).toContain("answer");
+    expect(JSON.stringify(uiChunks)).not.toContain("encrypted-mini");
+    expect(JSON.stringify(uiChunks)).not.toContain("encrypted-later");
+
     const firstStep = await first.finalStep;
+    expect(JSON.stringify(firstStep.response.messages)).not.toContain(
+      "encrypted-mini"
+    );
+    expect(JSON.stringify(firstStep.response.messages)).not.toContain(
+      "encrypted-later"
+    );
 
     await generateText({
       model: opengateway("minimax/MiniMax-M2.7"),

@@ -200,7 +200,7 @@ describe("OpenGateway reasoning round-trip", () => {
     expect(finalStep.reasoning).toContainEqual(
       expect.objectContaining({
         providerOptions: {
-          opengateway: { reasoningDetails },
+          opengateway: { reasoningDetailsRef: expect.any(String) },
         },
         text: "streamed tool planning",
         type: "reasoning",
