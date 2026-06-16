@@ -1,5 +1,8 @@
 import { writeFile } from "node:fs/promises";
-import { requiredOpenGatewayApiKey } from "./opengateway-live/json";
+import {
+  requiredOpenGatewayApiKey,
+  requiredOpenGatewayBaseURL,
+} from "./opengateway-live/json";
 import {
   listModels,
   rawBody,
@@ -46,7 +49,7 @@ async function runModel(
 
 async function main(): Promise<void> {
   const apiKey = requiredOpenGatewayApiKey();
-  const baseURL = process.env.AI_BASE_URL ?? "https://apis.opengateway.ai/v1";
+  const baseURL = requiredOpenGatewayBaseURL();
   const catalog = await listModels(baseURL, apiKey);
   const candidates = chooseCandidates(catalog.ids);
   const results: ModelResult[] = [];

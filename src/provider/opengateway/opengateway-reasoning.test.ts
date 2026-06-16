@@ -54,6 +54,27 @@ function opengatewayReasoningDetailsOnlyResponse(): Response {
   });
 }
 
+function opengatewayNullReasoningDetailsResponse(): Response {
+  return Response.json({
+    id: "chatcmpl-og",
+    object: "chat.completion",
+    created: 0,
+    model: "deepseek/deepseek-v4-flash",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "visible answer",
+          reasoning_details: null,
+        },
+        finish_reason: "stop",
+      },
+    ],
+    usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+  });
+}
+
 function opengatewayReasoningStreamResponse(): Response {
   const events = [
     {
@@ -194,6 +215,26 @@ describe("OpenGateway reasoning metadata", () => {
     );
     expect(JSON.stringify(result.finalStep.response.messages)).not.toContain(
       "encrypted"
+    );
+  });
+
+  it("ignores null reasoning_details values", async () => {
+    const fetch: typeof globalThis.fetch = () =>
+      Promise.resolve(opengatewayNullReasoningDetailsResponse());
+    const opengateway = createOpenGateway({ apiKey: "k", fetch });
+
+    const result = await generateText({
+      model: opengateway("deepseek/deepseek-v4-flash"),
+      prompt: "hi",
+      reasoning: "high",
+    });
+
+    expect(result.text).toBe("visible answer");
+    expect(JSON.stringify(result.finalStep.response.messages)).not.toContain(
+      "reasoningDetailsRef"
+    );
+    expect(JSON.stringify(result.finalStep.response.messages)).not.toContain(
+      "reasoning_details"
     );
   });
 

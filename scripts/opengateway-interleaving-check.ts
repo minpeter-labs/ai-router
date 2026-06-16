@@ -2,7 +2,10 @@ import { writeFile } from "node:fs/promises";
 import { rawStreamProbe } from "./opengateway-interleaving/raw";
 import { sdkStreamProbe } from "./opengateway-interleaving/sdk";
 import type { ModelProbe, ProbeReport } from "./opengateway-interleaving/types";
-import { requiredOpenGatewayApiKey } from "./opengateway-live/json";
+import {
+  requiredOpenGatewayApiKey,
+  requiredOpenGatewayBaseURL,
+} from "./opengateway-live/json";
 
 const DEFAULT_MODELS = [
   "deepseek/deepseek-v4-flash",
@@ -23,7 +26,7 @@ function csvModels(): readonly string[] {
 
 async function main(): Promise<void> {
   const apiKey = requiredOpenGatewayApiKey();
-  const baseURL = process.env.AI_BASE_URL ?? "https://apis.opengateway.ai/v1";
+  const baseURL = requiredOpenGatewayBaseURL();
   const results: ModelProbe[] = [];
   for (const model of csvModels()) {
     results.push({

@@ -24,6 +24,10 @@ function asJsonList(value: JSONValue): JSONValue[] {
   return isJSONArray(value) ? value : [value];
 }
 
+function isReasoningDetailsValue(value: unknown): value is JSONValue {
+  return value !== null && isJSONValue(value);
+}
+
 function jsonValueKey(value: JSONValue): string {
   return JSON.stringify(value) ?? "undefined";
 }
@@ -43,7 +47,7 @@ function appendUniqueJsonDetails(
 }
 
 function appendJsonDetails(target: JSONValue[], value: unknown): void {
-  if (isJSONValue(value)) {
+  if (isReasoningDetailsValue(value)) {
     appendUniqueJsonDetails(target, asJsonList(value));
   }
 }

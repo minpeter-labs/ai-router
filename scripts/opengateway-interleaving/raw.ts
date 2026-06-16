@@ -2,6 +2,7 @@ import {
   arrayProp,
   isRecord,
   recordProp,
+  redactedDiagnosticMessage,
   stringProp,
 } from "../opengateway-live/json";
 import type { JsonRecord } from "../opengateway-live/types";
@@ -108,7 +109,7 @@ export async function rawStreamProbe(
   );
   if (response.status >= 400) {
     return {
-      message: await response.text(),
+      message: redactedDiagnosticMessage(await response.text()),
       ok: false,
       status: response.status,
     };

@@ -1,5 +1,8 @@
 import type { CallFailure, JsonRecord, ValueShape } from "./types";
 
+const DEFAULT_OPENGATEWAY_BASE_URL = "https://apis.opengateway.ai/v1";
+const CUSTOM_BASE_URL_FLAG = "OPENGATEWAY_ALLOW_CUSTOM_BASE_URL";
+
 export function requiredEnv(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.length === 0) {
@@ -10,6 +13,31 @@ export function requiredEnv(name: string): string {
 
 export function requiredOpenGatewayApiKey(): string {
   return requiredEnv("OPENGATEWAY_API_KEY");
+}
+
+export function requiredOpenGatewayBaseURL(): string {
+  const value = process.env.AI_BASE_URL ?? DEFAULT_OPENGATEWAY_BASE_URL;
+  if (process.env[CUSTOM_BASE_URL_FLAG] === "1") {
+    return value;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("AI_BASE_URL must be a valid URL");
+  }
+  if (url.username.length > 0 || url.password.length > 0) {
+    throw new Error("AI_BASE_URL must not include credentials");
+  }
+  const isOpenGatewayHost =
+    url.hostname === "opengateway.ai" ||
+    url.hostname.endsWith(".opengateway.ai");
+  if (url.protocol !== "https:" || !isOpenGatewayHost) {
+    throw new Error(
+      `AI_BASE_URL must be an HTTPS opengateway.ai URL unless ${CUSTOM_BASE_URL_FLAG}=1`
+    );
+  }
+  return value;
 }
 
 export function isRecord(value: unknown): value is JsonRecord {
@@ -61,14 +89,37 @@ function messageFromRecord(error: JsonRecord): string | undefined {
   return stringProp(error, "message") || undefined;
 }
 
+export function redactedDiagnosticMessage(
+  message: unknown,
+  fallback = "upstream response body redacted"
+): string {
+  const text = typeof message === "string" ? message : String(message);
+  if (text.length === 0) {
+    return fallback;
+  }
+  const lower = text.toLowerCase();
+  if (
+    lower.includes("reasoning_details") ||
+    lower.includes("reasoningdetails")
+  ) {
+    return "upstream diagnostic redacted because it referenced reasoning details";
+  }
+  return text
+    .replaceAll(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replaceAll(/apik_[A-Za-z0-9._-]+/gi, "apik_[redacted]")
+    .slice(0, 300);
+}
+
 export function errorResult(error: unknown, status?: number): CallFailure {
   const message = isRecord(error)
-    ? (messageFromRecord(error) ?? JSON.stringify(error).slice(0, 300))
+    ? (messageFromRecord(error) ?? "upstream response body redacted")
     : String(error);
   return {
     ok: false,
     status,
     errorType: error instanceof Error ? error.name : typeof error,
-    message: error instanceof Error ? error.message.slice(0, 300) : message,
+    message: redactedDiagnosticMessage(
+      error instanceof Error ? error.message : message
+    ),
   };
 }

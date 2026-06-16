@@ -9,6 +9,7 @@ import {
   isRecord,
   recordProp,
   requiredOpenGatewayApiKey,
+  requiredOpenGatewayBaseURL,
   shape,
   stringProp,
 } from "./opengateway-live/json";
@@ -241,7 +242,7 @@ async function runModel(
 
 async function main(): Promise<void> {
   const apiKey = requiredOpenGatewayApiKey();
-  const baseURL = process.env.AI_BASE_URL ?? "https://apis.opengateway.ai/v1";
+  const baseURL = requiredOpenGatewayBaseURL();
   const results: ModelRoundtrip[] = [];
   for (const model of csvModels()) {
     results.push(await runModel(baseURL, apiKey, model));

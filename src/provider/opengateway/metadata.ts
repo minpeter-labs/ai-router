@@ -14,6 +14,10 @@ function asJsonList(value: JSONValue): JSONValue[] {
   return isJSONArray(value) ? value : [value];
 }
 
+function isReasoningDetailsValue(value: unknown): value is JSONValue {
+  return value !== null && isJSONValue(value);
+}
+
 function jsonValueKey(value: JSONValue): string {
   return JSON.stringify(value) ?? "undefined";
 }
@@ -49,12 +53,18 @@ export function collectChoiceReasoningDetails(body: unknown): JSONValue[] {
     }
 
     const message = choice.message;
-    if (isJSONObject(message) && isJSONValue(message.reasoning_details)) {
+    if (
+      isJSONObject(message) &&
+      isReasoningDetailsValue(message.reasoning_details)
+    ) {
       appendUniqueJsonDetails(details, asJsonList(message.reasoning_details));
     }
 
     const delta = choice.delta;
-    if (isJSONObject(delta) && isJSONValue(delta.reasoning_details)) {
+    if (
+      isJSONObject(delta) &&
+      isReasoningDetailsValue(delta.reasoning_details)
+    ) {
       appendUniqueJsonDetails(details, asJsonList(delta.reasoning_details));
     }
   }

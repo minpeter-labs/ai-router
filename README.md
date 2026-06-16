@@ -207,6 +207,11 @@ const opengateway = createOpenGateway({
 });
 ```
 
+The OpenGateway live diagnostic scripts use `OPENGATEWAY_API_KEY` and default to
+`https://apis.opengateway.ai/v1`. If you set `AI_BASE_URL` to a proxy or custom
+host, also set `OPENGATEWAY_ALLOW_CUSTOM_BASE_URL=1`; otherwise the scripts
+refuse to send the bearer token outside `*.opengateway.ai`.
+
 ## License
 
 MIT

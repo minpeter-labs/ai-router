@@ -159,6 +159,40 @@ describe("OpenGateway reasoning round-trip", () => {
     );
   });
 
+  it("does not replay null reasoning_details from assistant metadata", async () => {
+    const { bodies, fetch } = captureBodies([completionResponse("ok")]);
+    const opengateway = createOpenGateway({ apiKey: "k", fetch });
+
+    await generateText({
+      model: opengateway("minimax/MiniMax-M2.7"),
+      messages: [
+        { role: "user", content: "first" },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "reasoning",
+              text: "prior thinking",
+              providerOptions: {
+                opengateway: { reasoningDetails: null },
+              },
+            },
+            { type: "text", text: "prior answer" },
+          ],
+        },
+        { role: "user", content: "continue" },
+      ],
+    });
+
+    expect(bodies[0]?.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        reasoning_content: "prior thinking",
+      })
+    );
+    expect(JSON.stringify(bodies[0])).not.toContain("reasoning_details");
+  });
+
   it("preserves reasoning_details from a tool-call step into the next request", async () => {
     const { bodies, fetch } = captureBodies([
       toolCallReasoningResponse(),
