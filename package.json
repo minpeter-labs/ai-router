@@ -38,6 +38,12 @@
       "import": "./dist/openrouter.js",
       "require": "./dist/openrouter.cjs",
       "default": "./dist/openrouter.js"
+    },
+    "./wafer": {
+      "types": "./dist/wafer.d.ts",
+      "import": "./dist/wafer.js",
+      "require": "./dist/wafer.cjs",
+      "default": "./dist/wafer.js"
     }
   },
   "scripts": {
@@ -86,6 +92,7 @@
     "llm",
     "openai-compatible",
     "friendli",
-    "openrouter"
+    "openrouter",
+    "wafer"
   ]
 }
