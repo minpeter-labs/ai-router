@@ -134,14 +134,15 @@ const chat = route('kimi'); // reuse this instance across requests
 
 ## Providers
 
-`./friendli` and `./openrouter` are thin `@ai-sdk/openai-compatible` wrappers
-that translate the AI SDK's reasoning request into each provider's native field
-(and strip the foreign `reasoning_effort`):
+`./friendli`, `./openrouter`, and `./wafer` are thin `@ai-sdk/openai-compatible`
+wrappers that translate the AI SDK's reasoning request into each provider's
+native field (and strip the foreign `reasoning_effort`):
 
 | Provider   | becomes                                                 |
 | ---------- | ------------------------------------------------------- |
 | Friendli   | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
 | OpenRouter | `reasoning.enabled: boolean`                            |
+| Wafer      | `thinking.type: 'enabled' \| 'disabled'`                |
 
 ```ts
 // The plain `reasoning` option drives it on AND off — no providerOptions needed.
@@ -158,6 +159,22 @@ await streamText({
   reasoning: 'none', // -> thinking = false
   prompt: '...',
 });
+```
+
+### Wafer Zero Data Retention
+
+`createWafer` takes an extra `zdr` flag. When `true`, every request carries
+`Wafer-ZDR: required`, so Wafer rejects the request unless it can guarantee
+prompts and completions are never written to durable storage. It's off by
+default — `required` fails the request closed when the account isn't
+ZDR-entitled — but it doesn't change Wafer's per-token cost on an entitled
+account.
+
+```ts
+import { createWafer } from '@minpeter/ai-router/wafer';
+
+const wafer = createWafer({ zdr: true });
+await streamText({ model: wafer('GLM-5.1'), reasoning: 'high', prompt: '...' });
 ```
 
 ## License
