@@ -136,14 +136,23 @@ const chat = route('kimi'); // reuse this instance across requests
 
 `./friendli` and `./openrouter` are thin `@ai-sdk/openai-compatible` wrappers
 that translate the AI SDK's reasoning request into each provider's native field
-(and strip the foreign `reasoning_effort`):
+(and strip the foreign `reasoning_effort`). `./opengateway` keeps OpenGateway's
+OpenAI-compatible reasoning surface and lets the AI SDK omit `reasoning: 'none'`
+instead of sending a model-specific unsupported `reasoning_effort` value.
+OpenGateway also round-trips assistant `reasoning_content` and
+`reasoning_details` through AI SDK multi-step / multi-turn messages:
 
-| Provider   | becomes                                                 |
-| ---------- | ------------------------------------------------------- |
-| Friendli   | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
-| OpenRouter | `reasoning.enabled: boolean`                            |
+| Provider    | becomes                                                  |
+| ----------- | -------------------------------------------------------- |
+| Friendli    | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
+| OpenGateway | `reasoning_effort: "minimal", "low", "medium", ...`      |
+| OpenRouter  | `reasoning.enabled: boolean`                             |
 
 ```ts
+import { createFriendli } from '@minpeter/ai-router/friendli';
+import { createOpenGateway } from '@minpeter/ai-router/opengateway';
+import { streamText } from 'ai';
+
 // The plain `reasoning` option drives it on AND off — no providerOptions needed.
 // (A built-in transformParams middleware keeps `reasoning: 'none'` alive, which
 // the AI SDK would otherwise drop before the wrapper sees it.)
@@ -158,7 +167,20 @@ await streamText({
   reasoning: 'none', // -> thinking = false
   prompt: '...',
 });
+
+await streamText({
+  model: createOpenGateway()('openai/gpt-4o-mini'),
+  reasoning: 'high', // -> reasoning_effort = "high"
+  prompt: '...',
+});
 ```
+
+OpenGateway `message.reasoning_content` is exposed through the AI SDK's
+`reasoningText`/`finalStep.reasoningText` when a routed model returns it.
+Model-specific `message.reasoning_details` and `extra.routing` are preserved
+under `providerMetadata.opengateway`. When an assistant reasoning part carrying
+`providerOptions.opengateway.reasoningDetails` is sent again, the provider
+hoists it back to the OpenGateway request field `message.reasoning_details`.
 
 ## License
 

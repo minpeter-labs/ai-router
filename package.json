@@ -38,6 +38,12 @@
       "import": "./dist/openrouter.js",
       "require": "./dist/openrouter.cjs",
       "default": "./dist/openrouter.js"
+    },
+    "./opengateway": {
+      "types": "./dist/opengateway.d.ts",
+      "import": "./dist/opengateway.js",
+      "require": "./dist/opengateway.cjs",
+      "default": "./dist/opengateway.js"
     }
   },
   "scripts": {
@@ -86,6 +92,7 @@
     "llm",
     "openai-compatible",
     "friendli",
-    "openrouter"
+    "openrouter",
+    "opengateway"
   ]
 }
