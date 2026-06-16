@@ -154,6 +154,13 @@ function isTextStreamPart(part: LanguageModelV4StreamPart): boolean {
   );
 }
 
+function detailsSince(
+  details: readonly JSONValue[],
+  count: number
+): readonly JSONValue[] {
+  return details.slice(count);
+}
+
 export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
   {
     specificationVersion: "v4",
@@ -184,6 +191,25 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
       });
       const reasoningDetails: JSONValue[] = [];
       let carriedReasoningDetailsCount = 0;
+      let pendingToolCall: LanguageModelV4StreamPart | undefined;
+
+      const enqueuePendingToolCall = (
+        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
+      ) => {
+        if (pendingToolCall === undefined) {
+          return;
+        }
+
+        const uncarriedReasoningDetails = detailsSince(
+          reasoningDetails,
+          carriedReasoningDetailsCount
+        );
+        carriedReasoningDetailsCount = reasoningDetails.length;
+        controller.enqueue(
+          withReasoningPartMetadata(pendingToolCall, uncarriedReasoningDetails)
+        );
+        pendingToolCall = undefined;
+      };
 
       return {
         ...result,
@@ -198,11 +224,20 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
                   reasoningDetails,
                   collectChoiceReasoningDetails(part.rawValue)
                 );
+                enqueuePendingToolCall(controller);
                 if (includeRawChunks) {
                   controller.enqueue(part);
                 }
                 return;
               }
+
+              if (part.type === "tool-call") {
+                enqueuePendingToolCall(controller);
+                pendingToolCall = part;
+                return;
+              }
+
+              enqueuePendingToolCall(controller);
 
               if (isReasoningStreamPart(part)) {
                 carriedReasoningDetailsCount = reasoningDetails.length;
@@ -212,8 +247,9 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
                 return;
               }
 
-              if (part.type === "tool-call" || isTextStreamPart(part)) {
-                const uncarriedReasoningDetails = reasoningDetails.slice(
+              if (isTextStreamPart(part)) {
+                const uncarriedReasoningDetails = detailsSince(
+                  reasoningDetails,
                   carriedReasoningDetailsCount
                 );
                 carriedReasoningDetailsCount = reasoningDetails.length;
@@ -224,6 +260,9 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
               }
 
               controller.enqueue(part);
+            },
+            flush(controller) {
+              enqueuePendingToolCall(controller);
             },
           })
         ),
