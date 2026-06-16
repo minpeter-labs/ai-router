@@ -4,6 +4,7 @@ import {
   arrayProp,
   isRecord,
   recordProp,
+  redactedDiagnosticMessage,
   stringProp,
 } from "../opengateway-live/json";
 import { summarizeEvents } from "./summary";
@@ -77,7 +78,9 @@ export async function sdkStreamProbe(
     });
   } catch (error) {
     return {
-      message: error instanceof Error ? error.message : String(error),
+      message: redactedDiagnosticMessage(
+        error instanceof Error ? error.message : error
+      ),
       ok: false,
     };
   }

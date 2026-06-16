@@ -1,14 +1,25 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { streamText } from "ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { sdkStreamProbe } from "../../../scripts/opengateway-interleaving/sdk";
 import {
   errorResult,
   redactedDiagnosticMessage,
   requiredOpenGatewayBaseURL,
 } from "../../../scripts/opengateway-live/json";
 
+vi.mock("ai", async (importOriginal: () => Promise<typeof import("ai")>) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    streamText: vi.fn(),
+  };
+});
+
 const ORIGINAL_ENV = { ...process.env };
 
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
+  vi.mocked(streamText).mockReset();
 });
 
 describe("OpenGateway live script safety helpers", () => {
@@ -43,5 +54,28 @@ describe("OpenGateway live script safety helpers", () => {
 
     expect(result.message).toBe("upstream response body redacted");
     expect(JSON.stringify(result)).not.toContain("secret");
+  });
+
+  it("redacts interleaving SDK probe errors", async () => {
+    vi.mocked(streamText).mockImplementation(() => {
+      throw new Error(
+        'bad {"reasoning_details":[{"data":"secret"}]} Bearer apik_019test'
+      );
+    });
+
+    const result = await sdkStreamProbe(
+      "https://apis.opengateway.ai/v1",
+      "apik_019test",
+      "deepseek/deepseek-v4-flash"
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected sdkStreamProbe to fail");
+    }
+    expect(result.message).toContain("reasoning details");
+    expect(result.message).not.toContain("secret");
+    expect(result.message).not.toContain("apik_019test");
+    expect(result.message).not.toContain("Bearer apik");
   });
 });
