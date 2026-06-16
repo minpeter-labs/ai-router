@@ -9,11 +9,7 @@ export function requiredEnv(name: string): string {
 }
 
 export function requiredOpenGatewayApiKey(): string {
-  const value = process.env.OPENGATEWAY_API_KEY ?? process.env.AI_API_KEY;
-  if (value === undefined || value.length === 0) {
-    throw new Error("OPENGATEWAY_API_KEY or AI_API_KEY is required");
-  }
-  return value;
+  return requiredEnv("OPENGATEWAY_API_KEY");
 }
 
 export function isRecord(value: unknown): value is JsonRecord {
