@@ -44,6 +44,12 @@
       "import": "./dist/opengateway.js",
       "require": "./dist/opengateway.cjs",
       "default": "./dist/opengateway.js"
+    },
+    "./wafer": {
+      "types": "./dist/wafer.d.ts",
+      "import": "./dist/wafer.js",
+      "require": "./dist/wafer.cjs",
+      "default": "./dist/wafer.js"
     }
   },
   "scripts": {
@@ -93,6 +99,7 @@
     "openai-compatible",
     "friendli",
     "openrouter",
-    "opengateway"
+    "opengateway",
+    "wafer"
   ]
 }

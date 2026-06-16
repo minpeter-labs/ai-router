@@ -134,19 +134,31 @@ const chat = route('kimi'); // reuse this instance across requests
 
 ## Providers
 
-`./friendli` and `./openrouter` are thin `@ai-sdk/openai-compatible` wrappers
-that translate the AI SDK's reasoning request into each provider's native field
-(and strip the foreign `reasoning_effort`). `./opengateway` keeps OpenGateway's
-OpenAI-compatible reasoning surface and lets the AI SDK omit `reasoning: 'none'`
-instead of sending a model-specific unsupported `reasoning_effort` value.
-OpenGateway also round-trips assistant `reasoning_content` and
-`reasoning_details` through AI SDK multi-step / multi-turn messages:
+`./friendli`, `./opengateway`, `./openrouter`, and `./wafer` are thin
+`@ai-sdk/openai-compatible` wrappers that translate the AI SDK's reasoning
+request into each provider's native field (and strip unsupported foreign
+reasoning fields):
 
 | Provider    | becomes                                                  |
 | ----------- | -------------------------------------------------------- |
 | Friendli    | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
 | OpenGateway | `reasoning_effort: "minimal", "low", "medium", ...`      |
 | OpenRouter  | `reasoning.enabled: boolean`                             |
+| Wafer       | `reasoning_effort: <level>` (on) / `thinking.type: 'disabled'` (off) |
+
+OpenGateway keeps OpenGateway's OpenAI-compatible reasoning surface and lets the
+AI SDK omit `reasoning: 'none'` instead of sending a model-specific unsupported
+`reasoning_effort` value. OpenGateway also round-trips assistant
+`reasoning_content` and `reasoning_details` through AI SDK multi-step /
+multi-turn messages.
+
+Wafer keeps the granular effort level rather than collapsing to on/off:
+`low`/`medium`/`high` pass through, AI SDK `minimal` maps to `low`, AI SDK
+`xhigh` maps to Wafer's `max`, and Wafer's extra `max` level is reachable via
+`providerOptions.wafer.reasoningEffort: 'max'`. `MiniMax-M3` returns reasoning
+inline as `<think>...</think>`, which the provider extracts into a reasoning
+part. Preserving previous `reasoning_content` into later turns is separate and
+is controlled by `createWafer({ preserveReasoning })`.
 
 ```ts
 import { createFriendli } from '@minpeter/ai-router/friendli';
@@ -211,6 +223,61 @@ The OpenGateway live diagnostic scripts use `OPENGATEWAY_API_KEY` and default to
 `https://apis.opengateway.ai/v1`. If you set `AI_BASE_URL` to a proxy or custom
 host, also set `OPENGATEWAY_ALLOW_CUSTOM_BASE_URL=1`; otherwise the scripts
 refuse to send the bearer token outside `*.opengateway.ai`.
+
+### Wafer Preserved Reasoning
+
+`preserveReasoning` controls Wafer's multi-turn reasoning retention fields. It
+does not turn reasoning on by itself; keep using the AI SDK `reasoning` option
+for effort level (`'none'`, `'low'`, `'medium'`, `'high'`, or Wafer's `'max'`
+through `providerOptions.wafer.reasoningEffort`).
+
+```ts
+import { createWafer } from '@minpeter/ai-router/wafer';
+
+const wafer = createWafer({ preserveReasoning: 'auto' });
+
+await streamText({
+  model: wafer('GLM-5.1'),
+  reasoning: 'high',
+  prompt: '...',
+});
+```
+
+Modes:
+
+| value    | behavior                                                                 |
+| -------- | ------------------------------------------------------------------------ |
+| `false`  | Default. Do not add Wafer preserved-reasoning fields.                    |
+| `'auto'` | Add `preserve_thinking: true` and `thinking.keep: 'all'` only for `GLM-5.1` and `Kimi-K2.6`. |
+| `true`   | Force those fields for every Wafer model, useful when probing new model support. |
+
+You can override the provider default per call:
+
+```ts
+await streamText({
+  model: wafer('GLM-5.1'),
+  reasoning: 'high',
+  providerOptions: { wafer: { preserveReasoning: false } },
+  prompt: '...',
+});
+```
+
+### Wafer Zero Data Retention
+
+`createWafer` takes an extra `zdr` flag. When `true`, every request carries
+`Wafer-ZDR: required`, so Wafer rejects the request unless it can guarantee
+prompts and completions are never written to durable storage. It's off by
+default — `required` fails the request closed when the account isn't
+ZDR-entitled — but it doesn't change Wafer's per-token cost on an entitled
+account. The provider enforces this header at fetch time as well, so per-call
+headers cannot weaken `zdr: true`.
+
+```ts
+import { createWafer } from '@minpeter/ai-router/wafer';
+
+const wafer = createWafer({ zdr: true });
+await streamText({ model: wafer('GLM-5.1'), reasoning: 'high', prompt: '...' });
+```
 
 ## License
 
