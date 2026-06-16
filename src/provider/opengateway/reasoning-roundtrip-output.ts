@@ -91,10 +91,15 @@ export function withReasoningPartMetadata(
   part: LanguageModelV4StreamPart,
   details: readonly JSONValue[]
 ): LanguageModelV4StreamPart {
+  if (details.length === 0) {
+    return part;
+  }
+
   switch (part.type) {
     case "reasoning-delta":
     case "reasoning-end":
     case "reasoning-start":
+    case "tool-call":
       return {
         ...part,
         providerMetadata: withOpenGatewayReasoningMetadata(
@@ -115,7 +120,6 @@ export function withReasoningPartMetadata(
     case "text-end":
     case "text-start":
     case "tool-approval-request":
-    case "tool-call":
     case "tool-input-delta":
     case "tool-input-end":
     case "tool-input-start":
