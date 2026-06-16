@@ -146,6 +146,14 @@ function isReasoningStreamPart(part: LanguageModelV4StreamPart): boolean {
   );
 }
 
+function isTextStreamPart(part: LanguageModelV4StreamPart): boolean {
+  return (
+    part.type === "text-delta" ||
+    part.type === "text-end" ||
+    part.type === "text-start"
+  );
+}
+
 export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
   {
     specificationVersion: "v4",
@@ -204,7 +212,7 @@ export const opengatewayReasoningRoundtripMiddleware: LanguageModelMiddleware =
                 return;
               }
 
-              if (part.type === "tool-call") {
+              if (part.type === "tool-call" || isTextStreamPart(part)) {
                 const uncarriedReasoningDetails = reasoningDetails.slice(
                   carriedReasoningDetailsCount
                 );

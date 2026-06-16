@@ -99,6 +99,9 @@ export function withReasoningPartMetadata(
     case "reasoning-delta":
     case "reasoning-end":
     case "reasoning-start":
+    case "text-delta":
+    case "text-end":
+    case "text-start":
     case "tool-call":
       return {
         ...part,
@@ -116,9 +119,6 @@ export function withReasoningPartMetadata(
     case "response-metadata":
     case "source":
     case "stream-start":
-    case "text-delta":
-    case "text-end":
-    case "text-start":
     case "tool-approval-request":
     case "tool-input-delta":
     case "tool-input-end":
