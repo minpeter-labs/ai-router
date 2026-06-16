@@ -1,5 +1,13 @@
 # @minpeter/ai-router
 
+## 0.0.3
+
+### Patch Changes
+
+- c87c41f: Friendli reasoning translation now sends both `chat_template_kwargs.thinking` and `chat_template_kwargs.enable_thinking` (same boolean). Friendli's reasoning toggle is model-dependent — most models read `thinking`, but some (e.g. Gemma 4) read `enable_thinking`. Emitting both makes the plain `reasoning` option drive thinking on/off regardless of which field the target model honors; a model ignores the field it doesn't recognize. Backward compatible.
+- a331f7c: Add the Wafer provider export, including reasoning-effort translation, ZDR request enforcement, and preserved-reasoning controls for Wafer models.
+- 8ad68fd: Add an OpenGateway provider entrypoint at `@minpeter/ai-router/opengateway`. It defaults to `https://apis.opengateway.ai/v1`, reads `OPENGATEWAY_API_KEY`, passes supported AI SDK `reasoning` levels through as OpenGateway's OpenAI-compatible `reasoning_effort` field, and preserves OpenGateway `reasoning_content` / `reasoning_details` across AI SDK multi-step and multi-turn messages.
+
 ## 0.0.2
 
 ### Patch Changes
