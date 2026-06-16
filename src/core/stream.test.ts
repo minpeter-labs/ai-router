@@ -230,6 +230,22 @@ describe("createFallbackStream (mid-stream fallback)", () => {
     expect((out.error as AggregateError).message).toContain("last 503");
   });
 
+  it("surfaces an AggregateError including prior retryable errors when a later candidate fails non-retryably", async () => {
+    // A and B fail with retryable 503s (each triggers fallback and accumulates),
+    // then C emits a non-retryable 400. The consumer must see all three errors,
+    // not just C's 400 — matching the README's all-candidates-failed contract.
+    const a = errorPartModel(new Error("first 503"));
+    const b = errorPartModel(new Error("second 503"));
+    const c = errorPartModel({ statusCode: 400, message: "bad request" });
+
+    const out = await runFallback([a, b, c]);
+    expect(out.error).toBeInstanceOf(AggregateError);
+    expect((out.error as AggregateError).errors).toHaveLength(3);
+    expect(a.doStreamCalls).toHaveLength(1);
+    expect(b.doStreamCalls).toHaveLength(1);
+    expect(c.doStreamCalls).toHaveLength(1);
+  });
+
   it("falls back on a pre-content error that arrives AFTER framing parts (response-metadata/text-start)", async () => {
     // The openai-compatible provider emits response-metadata (and text-start) on
     // its first chunk before any text-delta. An error there is still pre-content.

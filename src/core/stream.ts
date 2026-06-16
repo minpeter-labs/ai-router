@@ -246,8 +246,12 @@ class FallbackPump {
     const hasNext = retry && nextIdx < this.args.candidates.length;
     this.emitOnError(error, idx, hasNext);
 
-    if (blockedByOutput || !retry) {
+    if (blockedByOutput) {
       this.safeError(error);
+      return;
+    }
+    if (!retry) {
+      this.safeError(surfaceFailure(this.errors, this.args.logicalId));
       return;
     }
     if (!hasNext) {
