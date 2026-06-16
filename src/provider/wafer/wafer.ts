@@ -36,10 +36,15 @@ export interface CreateWaferSettings
 /**
  * Wafer provider built on `@ai-sdk/openai-compatible`.
  *
- * The `reasoning` option drives Wafer's `thinking.type` (`'enabled'` |
- * `'disabled'`) for every level, on or off:
- *  - `reasoning: 'low' | 'medium' | 'high' | …` -> `thinking.type: 'enabled'`
- *  - `reasoning: 'none'`                         -> `thinking.type: 'disabled'`
+ * Wafer accepts a granular `reasoning_effort`, so the `reasoning` option keeps
+ * its level instead of collapsing to on/off:
+ *  - `reasoning: 'low' | 'medium' | 'high'` -> `reasoning_effort: <level>`
+ *  - `reasoning: 'none'`                     -> `thinking.type: 'disabled'`
+ *  - Wafer's extra `'max'` level (not in the AI SDK set) is reachable via
+ *    `providerOptions.wafer.reasoningEffort: 'max'`.
+ *
+ * `MiniMax-M3` returns reasoning inline as `<think>…</think>` rather than in a
+ * `reasoning_content` field; it is extracted into a reasoning part automatically.
  *
  * @example
  * const wafer = createWafer();

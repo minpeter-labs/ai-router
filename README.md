@@ -142,7 +142,12 @@ native field (and strip the foreign `reasoning_effort`):
 | ---------- | ------------------------------------------------------- |
 | Friendli   | `chat_template_kwargs.{thinking, enable_thinking}: bool` |
 | OpenRouter | `reasoning.enabled: boolean`                            |
-| Wafer      | `thinking.type: 'enabled' \| 'disabled'`                |
+| Wafer      | `reasoning_effort: <level>` (on) / `thinking.type: 'disabled'` (off) |
+
+Wafer keeps the granular effort level (`low`/`medium`/`high`) rather than
+collapsing to on/off; its extra `max` level is reachable via
+`providerOptions.wafer.reasoningEffort: 'max'`. `MiniMax-M3` returns reasoning
+inline as `<think>…</think>`, which the provider extracts into a reasoning part.
 
 ```ts
 // The plain `reasoning` option drives it on AND off — no providerOptions needed.

@@ -47,7 +47,7 @@ describe("createWafer", () => {
     expect(captured.headers.get("authorization")).toBe("Bearer secret-token");
   });
 
-  it("translates top-level reasoning into thinking and strips reasoning_effort", async () => {
+  it("forwards a top-level reasoning level as reasoning_effort", async () => {
     const { fetch, captured } = captureFetch();
     const wafer = createWafer({ apiKey: "k", fetch });
 
@@ -57,8 +57,22 @@ describe("createWafer", () => {
       reasoning: "high",
     });
 
-    expect(captured.body.thinking).toEqual({ type: "enabled" });
-    expect(captured.body.reasoning_effort).toBeUndefined();
+    expect(captured.body.reasoning_effort).toBe("high");
+    expect(captured.body.thinking).toBeUndefined();
+  });
+
+  it("forwards the Wafer-specific 'max' level via providerOptions", async () => {
+    const { fetch, captured } = captureFetch();
+    const wafer = createWafer({ apiKey: "k", fetch });
+
+    await generateText({
+      model: wafer("m"),
+      prompt: "hi",
+      providerOptions: { wafer: { reasoningEffort: "max" } },
+    });
+
+    expect(captured.body.reasoning_effort).toBe("max");
+    expect(captured.body.thinking).toBeUndefined();
   });
 
   it("disables thinking from a plain top-level reasoning: 'none'", async () => {

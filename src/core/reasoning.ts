@@ -30,10 +30,17 @@ import type { LanguageModelMiddleware } from "ai";
  *
  * @param applyReasoning writes the provider's native reasoning field into the
  *   already-cloned `body`. Mutating `body` is safe — it is never the caller's
- *   object.
+ *   object. It receives the classified `enabled` flag plus the original
+ *   `effort` value (the raw `reasoning_effort`, e.g. a level string like
+ *   `'high'` or a boolean): on/off dialects can ignore it, while a provider
+ *   that maps levels natively can forward the granular level.
  */
 export function createReasoningTransform(
-  applyReasoning: (body: Record<string, unknown>, enabled: boolean) => void
+  applyReasoning: (
+    body: Record<string, unknown>,
+    enabled: boolean,
+    effort: unknown
+  ) => void
 ): (args: Record<string, unknown>) => Record<string, unknown> {
   return (args: Record<string, unknown>): Record<string, unknown> => {
     const effort = args.reasoning_effort;
@@ -46,7 +53,7 @@ export function createReasoningTransform(
     // Drop reasoning_effort without a mutating `delete`; `body` is a fresh clone
     // of the remaining keys.
     const { reasoning_effort: _omit, ...body } = args;
-    applyReasoning(body, !(effort === "none" || effort === false));
+    applyReasoning(body, !(effort === "none" || effort === false), effort);
     return body;
   };
 }
