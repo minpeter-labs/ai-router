@@ -1,5 +1,11 @@
 # @minpeter/ai-router
 
+## 0.0.4
+
+### Patch Changes
+
+- 8d778b4: Refresh dependencies to the stable AI SDK v7 baseline.
+
 ## 0.0.3
 
 ### Patch Changes
