@@ -28,32 +28,32 @@
       "default": "./dist/index.js"
     },
     "./friendli": {
-      "types": "./dist/friendli.d.ts",
+      "types": "./dist/provider/friendli/friendli.d.ts",
       "import": "./dist/friendli.js",
       "require": "./dist/friendli.cjs",
       "default": "./dist/friendli.js"
     },
     "./openrouter": {
-      "types": "./dist/openrouter.d.ts",
+      "types": "./dist/provider/openrouter/openrouter.d.ts",
       "import": "./dist/openrouter.js",
       "require": "./dist/openrouter.cjs",
       "default": "./dist/openrouter.js"
     },
     "./opengateway": {
-      "types": "./dist/opengateway.d.ts",
+      "types": "./dist/provider/opengateway/opengateway.d.ts",
       "import": "./dist/opengateway.js",
       "require": "./dist/opengateway.cjs",
       "default": "./dist/opengateway.js"
     },
     "./wafer": {
-      "types": "./dist/wafer.d.ts",
+      "types": "./dist/provider/wafer/wafer.d.ts",
       "import": "./dist/wafer.js",
       "require": "./dist/wafer.cjs",
       "default": "./dist/wafer.js"
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc -p tsconfig.build.json",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
@@ -83,7 +83,7 @@
     "dotenv": "^17.4.2",
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "ultracite": "^7.8.3",
     "vitest": "^4.1.9"
   },
