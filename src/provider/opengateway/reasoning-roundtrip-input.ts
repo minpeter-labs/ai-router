@@ -11,7 +11,7 @@ import {
   consumeOwnDataPromiseFields,
 } from "../../core/runtime-types";
 import { clearTimerSafely, scheduleTimer } from "../../core/timeout";
-import { appendUniqueJsonDetails } from "./metadata";
+import { appendUniqueJsonDetails } from "./metadata-details";
 import {
   captureOpenGatewayReasoningDetailsStore,
   type OpenGatewayReasoningDetailsStore,

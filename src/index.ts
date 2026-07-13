@@ -1,12 +1,10 @@
-export { RouterConcurrencyError } from "./core/admission";
-export {
-  defaultClassifyFailure,
-  retryAfterMsOf,
-} from "./core/failure";
+export { RouterConcurrencyError } from "./core/admission-utils";
+export { defaultClassifyFailure } from "./core/failure";
+export { retryAfterMsOf } from "./core/failure-retry-after";
 export {
   MemoryRouterHealthStore,
   RouterHealthUnavailableError,
-} from "./core/health";
+} from "./core/health-store";
 export { detectModalities } from "./core/modality";
 export {
   defaultShouldRetryThisError,
@@ -14,7 +12,7 @@ export {
   surfaceFailure,
 } from "./core/retry";
 export { createRouter } from "./core/router";
-export { RouterStreamError } from "./core/stream";
+export { RouterStreamError } from "./core/stream-reader";
 export {
   RouterCancellationError,
   RouterTimeoutError,

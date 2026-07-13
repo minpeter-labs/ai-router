@@ -6,17 +6,21 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 
 import {
-  captureProviderConvertUsage,
-  captureProviderFetch,
-  captureProviderMetadataExtractor,
-  captureProviderModelId,
-  captureProviderSupportedUrls,
   prepareProviderSettings,
   rejectAsyncProviderSettingValues,
   snapshotProviderHeaders,
   snapshotProviderQueryParams,
   validateCommonProviderSettings,
 } from "../provider-settings";
+import {
+  captureProviderConvertUsage,
+  captureProviderFetch,
+} from "../provider-settings-fetch";
+import {
+  captureProviderMetadataExtractor,
+  captureProviderModelId,
+} from "../provider-settings-metadata";
+import { captureProviderSupportedUrls } from "../provider-settings-urls";
 import {
   openrouterReasoningMiddleware,
   openrouterReasoningTransform,

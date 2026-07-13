@@ -10,7 +10,7 @@ import {
   consumeGenuinePromise,
   consumeOwnDataPromiseFields,
 } from "../../core/runtime-types";
-import { snapshotUniqueJsonDetails } from "./metadata";
+import { snapshotUniqueJsonDetails } from "./metadata-details";
 import {
   type OpenGatewayReasoningDetailsStore,
   REASONING_DETAILS_REF_KEY,
