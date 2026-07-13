@@ -124,13 +124,14 @@ describe("createRouter — fallback", () => {
   it("falls back when a stream produces no content before the deadline", async () => {
     let cancelled = false;
     const hanging = new MockLanguageModelV4({
-      doStream: () => ({
-        stream: new ReadableStream<never>({
-          cancel() {
-            cancelled = true;
-          },
+      doStream: () =>
+        Promise.resolve({
+          stream: new ReadableStream<never>({
+            cancel() {
+              cancelled = true;
+            },
+          }),
         }),
-      }),
     });
     const fallback = streamingModel(["after timeout"]);
     const route = createRouter({

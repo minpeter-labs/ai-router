@@ -1,3 +1,4 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { generateText, streamText } from "ai";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { describe, expect, it } from "vitest";
@@ -68,26 +69,27 @@ describe("createRouter — fallback", () => {
     const model = new MockLanguageModelV4({
       doStream: () => {
         calls += 1;
+        const chunks: LanguageModelV4StreamPart[] =
+          calls === 5
+            ? [
+                { type: "stream-start", warnings: [] },
+                {
+                  type: "error",
+                  error: Object.assign(new Error("limited"), {
+                    statusCode: 429,
+                  }),
+                },
+              ]
+            : [
+                { type: "stream-start", warnings: [] },
+                { type: "text-start", id: "1" },
+                { type: "text-delta", id: "1", delta: "ok" },
+                { type: "text-end", id: "1" },
+                { type: "finish", finishReason, usage },
+              ];
         return Promise.resolve({
           stream: simulateReadableStream({
-            chunks:
-              calls === 5
-                ? [
-                    { type: "stream-start", warnings: [] },
-                    {
-                      type: "error",
-                      error: Object.assign(new Error("limited"), {
-                        statusCode: 429,
-                      }),
-                    },
-                  ]
-                : [
-                    { type: "stream-start", warnings: [] },
-                    { type: "text-start", id: "1" },
-                    { type: "text-delta", id: "1", delta: "ok" },
-                    { type: "text-end", id: "1" },
-                    { type: "finish", finishReason, usage },
-                  ],
+            chunks,
           }),
         });
       },

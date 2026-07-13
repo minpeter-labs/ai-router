@@ -1,3 +1,4 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { streamText } from "ai";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { describe, expect, it } from "vitest";
@@ -86,30 +87,31 @@ describe("createRouter — fallback", () => {
     const primary = new MockLanguageModelV4({
       doStream: () => {
         calls += 1;
-        return {
+        const chunks: LanguageModelV4StreamPart[] =
+          calls === 1
+            ? [
+                { type: "stream-start", warnings: [] },
+                { type: "text-start", id: "1" },
+                {
+                  type: "text-delta",
+                  id: "1",
+                  delta: "initial stream success",
+                },
+                { type: "text-end", id: "1" },
+                { type: "finish", finishReason, usage },
+              ]
+            : [
+                { type: "stream-start", warnings: [] },
+                {
+                  type: "error",
+                  error: new Error("stream provider failed"),
+                },
+              ];
+        return Promise.resolve({
           stream: simulateReadableStream({
-            chunks:
-              calls === 1
-                ? [
-                    { type: "stream-start" as const, warnings: [] },
-                    { type: "text-start" as const, id: "1" },
-                    {
-                      type: "text-delta" as const,
-                      id: "1",
-                      delta: "initial stream success",
-                    },
-                    { type: "text-end" as const, id: "1" },
-                    { type: "finish" as const, finishReason, usage },
-                  ]
-                : [
-                    { type: "stream-start" as const, warnings: [] },
-                    {
-                      type: "error" as const,
-                      error: new Error("stream provider failed"),
-                    },
-                  ],
+            chunks,
           }),
-        };
+        });
       },
     });
     const fallback = streamingModel(["must not run"]);
