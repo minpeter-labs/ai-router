@@ -1,3 +1,8 @@
+import {
+  consumeGenuinePromise,
+  consumeOwnDataPromiseFields,
+  isPlainObjectValue,
+} from "./runtime-types";
 import type { CooldownOption } from "./types";
 
 const DEFAULT_RESET_INTERVAL = 180_000; // 3 minutes
@@ -10,12 +15,25 @@ const UNIT_MS: Record<string, number> = {
   h: 3_600_000,
 };
 
+function validInterval(value: number): number {
+  const rounded = Math.ceil(value);
+  if (!Number.isFinite(value) || value <= 0 || !Number.isSafeInteger(rounded)) {
+    throw new Error(
+      "ai-router: invalid cooldown interval (must be a positive safe duration)"
+    );
+  }
+  // JavaScript timers truncate fractional milliseconds. Preserve the meaning
+  // of every positive configured interval instead of silently turning values
+  // such as `0.1ms` into an immediate (0ms) timer.
+  return rounded;
+}
+
 /** Parse a duration string like `'500ms'`, `'30s'`, `'1m'`, `'2h'` to milliseconds. */
-function parseDuration(value: string): number {
+export function parseDuration(value: string): number {
   const match = DURATION_RE.exec(value.trim());
   if (match === null) {
     throw new Error(
-      `ai-router: invalid cooldown duration "${value}" (use e.g. '500ms', '30s', '1m', '2h')`
+      `ai-router: invalid duration "${value}" (use e.g. '500ms', '30s', '1m', '2h')`
     );
   }
   return Number(match[1]) * UNIT_MS[match[2]];
@@ -37,6 +55,7 @@ export class CooldownState {
   private lastReset: number;
   private readonly cfg: { modelResetInterval: number };
   private readonly now: () => number;
+  private lastValidNow = 0;
 
   constructor(
     cfg: { modelResetInterval: number },
@@ -44,17 +63,23 @@ export class CooldownState {
   ) {
     this.cfg = cfg;
     this.now = now;
-    this.lastReset = now();
+    this.lastReset = this.clockNow();
   }
 
   /** Reset to the primary if the sticky window has elapsed. Call once per selection. */
   checkAndReset(): void {
+    const now = this.clockNow();
+    if (now < this.lastReset) {
+      // Wall-clock rollback must not extend a local sticky window by the size
+      // of the clock correction. Restart the interval from the new clock.
+      this.lastReset = now;
+    }
     if (
       this.activeFullIndex !== 0 &&
-      this.now() - this.lastReset >= this.cfg.modelResetInterval
+      now - this.lastReset >= this.cfg.modelResetInterval
     ) {
       this.activeFullIndex = 0;
-      this.lastReset = this.now();
+      this.lastReset = now;
     }
   }
 
@@ -72,9 +97,29 @@ export class CooldownState {
     if (fullIndex !== this.activeFullIndex) {
       this.activeFullIndex = fullIndex;
       if (fullIndex !== 0) {
-        this.lastReset = this.now();
+        this.lastReset = this.clockNow();
       }
     }
+  }
+
+  private clockNow(): number {
+    try {
+      const value = this.now();
+      if (consumeGenuinePromise(value)) {
+        throw new Error("async cooldown clock is unsupported");
+      }
+      if (
+        Number.isFinite(value) &&
+        value >= 0 &&
+        value <= Number.MAX_SAFE_INTEGER
+      ) {
+        this.lastValidNow = value;
+        return value;
+      }
+    } catch {
+      // Optional sticky routing must not fail when its clock is unavailable.
+    }
+    return this.lastValidNow;
   }
 }
 
@@ -82,19 +127,34 @@ export class CooldownState {
 export function resolveCooldown(
   opt?: CooldownOption
 ): { modelResetInterval: number } | undefined {
-  if (!opt) {
+  if (consumeGenuinePromise(opt)) {
+    throw new Error("ai-router: cooldown must be synchronous");
+  }
+  if (opt === undefined || opt === false || opt === 0) {
     return; // false / undefined / 0
   }
   if (opt === true) {
     return { modelResetInterval: DEFAULT_RESET_INTERVAL };
   }
   if (typeof opt === "number") {
-    return { modelResetInterval: opt };
+    return { modelResetInterval: validInterval(opt) };
   }
   if (typeof opt === "string") {
-    return { modelResetInterval: parseDuration(opt) };
+    return { modelResetInterval: validInterval(parseDuration(opt)) };
+  }
+  if (!isPlainObjectValue(opt)) {
+    throw new Error(
+      "ai-router: cooldown must be a boolean, duration, or config object"
+    );
+  }
+  consumeOwnDataPromiseFields(opt, ["modelResetInterval"]);
+  const modelResetInterval = opt.modelResetInterval;
+  if (consumeGenuinePromise(modelResetInterval)) {
+    throw new Error("ai-router: cooldown must be synchronous");
   }
   return {
-    modelResetInterval: opt.modelResetInterval ?? DEFAULT_RESET_INTERVAL,
+    modelResetInterval: validInterval(
+      modelResetInterval ?? DEFAULT_RESET_INTERVAL
+    ),
   };
 }

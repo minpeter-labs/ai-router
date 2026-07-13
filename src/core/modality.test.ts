@@ -98,12 +98,68 @@ describe("detectModalities", () => {
     ).toEqual(["pdf"]);
   });
 
-  it("ignores unknown media types (application/octet-stream) — not added", () => {
+  it("maps unknown media types to generic file support", () => {
     expect(
       sortedModalities([
         { role: "user", content: [filePart("application/octet-stream")] },
       ])
-    ).toEqual([]);
+    ).toEqual(["file"]);
+  });
+
+  it("detects assistant reasoning files", () => {
+    expect(
+      sortedModalities([
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "reasoning-file",
+              mediaType: "image/png",
+              data: {
+                type: "url",
+                url: new URL("https://x/reasoning.png"),
+              },
+            },
+          ],
+        },
+      ])
+    ).toEqual(["image"]);
+  });
+
+  it("detects files nested in tool-result content", () => {
+    expect(
+      sortedModalities([
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "render",
+              output: {
+                type: "content",
+                value: [
+                  {
+                    type: "file",
+                    mediaType: "application/pdf",
+                    data: {
+                      type: "url",
+                      url: new URL("https://x/result.pdf"),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ])
+    ).toEqual(["pdf"]);
+  });
+
+  it("keeps text media files distinct from inline text parts", () => {
+    expect(
+      sortedModalities([{ role: "user", content: [filePart("text/csv")] }])
+    ).toEqual(["file"]);
   });
 
   it("collects the set of all modalities across mixed parts (text + image + pdf)", () => {

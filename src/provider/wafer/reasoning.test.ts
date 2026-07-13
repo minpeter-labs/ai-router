@@ -94,6 +94,24 @@ describe("waferReasoningTransform", () => {
 });
 
 describe("createWaferRequestTransform", () => {
+  it("consumes Promise-valued configuration and request aliases", async () => {
+    expect(() =>
+      createWaferRequestTransform(
+        Promise.reject(new Error("async preservation setting")) as never
+      )
+    ).toThrow("preserveReasoning must be synchronous");
+    const transform = createWaferRequestTransform();
+    expect(() =>
+      transform({
+        preserveReasoning: Promise.reject(
+          new Error("async preservation alias")
+        ),
+        reasoning_effort: "high",
+      })
+    ).toThrow("reasoning request body fields must be synchronous");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("adds both Wafer preserved-reasoning fields when forced and reasoning is enabled", () => {
     const transform = createWaferRequestTransform(true);
 

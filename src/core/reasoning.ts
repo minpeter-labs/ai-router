@@ -1,4 +1,56 @@
 import type { LanguageModelMiddleware } from "ai";
+import { boundedEnumerableOwnKeys } from "./http-headers";
+import {
+  consumeGenuinePromise,
+  consumeOwnDataPromiseFields,
+} from "./runtime-types";
+
+const MAX_REASONING_BODY_FIELDS = 10_000;
+
+export function snapshotReasoningRequestBody(
+  value: unknown,
+  omittedKeys: readonly string[] = []
+): Record<string, unknown> {
+  if (consumeGenuinePromise(value)) {
+    throw new TypeError("reasoning request body must be synchronous");
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError("reasoning request body must be an object");
+  }
+  const keys = boundedEnumerableOwnKeys(value, MAX_REASONING_BODY_FIELDS);
+  if (keys === undefined) {
+    throw new TypeError(
+      `reasoning request body must contain at most ${MAX_REASONING_BODY_FIELDS} fields`
+    );
+  }
+  consumeOwnDataPromiseFields(value, keys);
+  const entries: Array<readonly [string, unknown]> = [];
+  let asyncField = false;
+  for (const key of keys) {
+    const item = Reflect.get(value, key);
+    if (consumeGenuinePromise(item)) {
+      asyncField = true;
+    }
+    entries.push([key, item]);
+  }
+  if (asyncField) {
+    throw new TypeError("reasoning request body fields must be synchronous");
+  }
+  const omitted = new Set(omittedKeys);
+  const snapshot: Record<string, unknown> = {};
+  for (const [key, item] of entries) {
+    if (omitted.has(key)) {
+      continue;
+    }
+    Object.defineProperty(snapshot, key, {
+      configurable: true,
+      enumerable: true,
+      value: item,
+      writable: true,
+    });
+  }
+  return snapshot;
+}
 
 /**
  * Provider-agnostic scaffolding for a `transformRequestBody` hook that turns the
@@ -42,19 +94,33 @@ export function createReasoningTransform(
     effort: unknown
   ) => void
 ): (args: Record<string, unknown>) => Record<string, unknown> {
+  if (
+    consumeGenuinePromise(applyReasoning) ||
+    typeof applyReasoning !== "function"
+  ) {
+    throw new TypeError("applyReasoning must be a synchronous function");
+  }
   return (args: Record<string, unknown>): Record<string, unknown> => {
-    const effort = args.reasoning_effort;
+    const body = snapshotReasoningRequestBody(args);
+    const effort = body.reasoning_effort;
 
     // No reasoning requested -> return an untouched clone (keeps the key if set).
     if (effort == null) {
-      return { ...args };
+      return body;
     }
 
-    // Drop reasoning_effort without a mutating `delete`; `body` is a fresh clone
-    // of the remaining keys.
-    const { reasoning_effort: _omit, ...body } = args;
-    applyReasoning(body, !(effort === "none" || effort === false), effort);
-    return body;
+    const bodyWithoutEffort = snapshotReasoningRequestBody(body, [
+      "reasoning_effort",
+    ]);
+    const result = applyReasoning(
+      bodyWithoutEffort,
+      !(effort === "none" || effort === false),
+      effort
+    );
+    if (consumeGenuinePromise(result)) {
+      throw new TypeError("applyReasoning must return synchronously");
+    }
+    return bodyWithoutEffort;
   };
 }
 
@@ -80,27 +146,50 @@ export function createReasoningTransform(
  * @param name the provider's `providerOptions` key (e.g. `'friendli'`).
  */
 export function reasoningMiddleware(name: string): LanguageModelMiddleware {
+  if (
+    consumeGenuinePromise(name) ||
+    typeof name !== "string" ||
+    name.length === 0 ||
+    name.length > 256
+  ) {
+    throw new TypeError(
+      "reasoning provider name must be synchronous and bounded"
+    );
+  }
   return {
-    transformParams: ({ params }) => {
-      const reasoning = params.reasoning;
+    transformParams: (options) => {
+      const hookOptions = snapshotReasoningRequestBody(options);
+      const params = hookOptions.params as typeof options.params;
+      if (typeof params !== "object" || params === null) {
+        throw new TypeError("reasoning middleware params must be an object");
+      }
+      const capturedParams = snapshotReasoningRequestBody(params);
+      const reasoning = capturedParams.reasoning;
       // Leave the provider default in place when nothing actionable was asked.
       if (reasoning == null || reasoning === "provider-default") {
         return Promise.resolve(params);
       }
 
-      const providerOptions = params.providerOptions ?? {};
+      const providerOptions =
+        capturedParams.providerOptions === undefined
+          ? {}
+          : snapshotReasoningRequestBody(capturedParams.providerOptions);
+      const providerSettings =
+        providerOptions[name] === undefined
+          ? {}
+          : snapshotReasoningRequestBody(providerOptions[name]);
       // An explicit reasoningEffort wins; don't clobber it.
-      if (providerOptions[name]?.reasoningEffort != null) {
+      if (providerSettings.reasoningEffort != null) {
         return Promise.resolve(params);
       }
 
       return Promise.resolve({
-        ...params,
+        ...capturedParams,
         providerOptions: {
           ...providerOptions,
-          [name]: { ...providerOptions[name], reasoningEffort: reasoning },
+          [name]: { ...providerSettings, reasoningEffort: reasoning },
         },
-      });
+      } as typeof params);
     },
   };
 }

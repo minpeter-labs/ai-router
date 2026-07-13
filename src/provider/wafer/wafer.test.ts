@@ -4,6 +4,50 @@ import { captureFetch } from "../test-utils";
 import { createWafer } from "./wafer";
 
 describe("createWafer", () => {
+  it("consumes Promise-valued common and Wafer-specific settings", async () => {
+    expect(() =>
+      createWafer(Promise.reject(new Error("async settings")) as never)
+    ).toThrow("Wafer settings must be synchronous");
+    expect(() =>
+      createWafer({
+        fetch: Promise.reject(new Error("async fetch")) as never,
+        preserveReasoning: Promise.reject(
+          new Error("async preservation")
+        ) as never,
+        zdr: Promise.reject(new Error("async ZDR")) as never,
+      })
+    ).toThrow("Wafer settings must be synchronous");
+    expect(() =>
+      createWafer({
+        queryParams: {
+          value: Promise.reject(new Error("async query")),
+        } as never,
+      })
+    ).toThrow("Wafer query parameter values must be synchronous");
+    let thenReads = 0;
+    const extension = Object.defineProperty({}, ["th", "en"].join(""), {
+      get() {
+        thenReads += 1;
+        throw new Error("then must not be inspected");
+      },
+    });
+    const wafer = createWafer({ apiKey: "k" });
+    expect(() => wafer(extension as never)).toThrow(
+      "Wafer modelId must be a synchronous non-empty string"
+    );
+    expect(() =>
+      wafer(Promise.reject(new Error("async model id")) as never)
+    ).toThrow("Wafer modelId must be a synchronous non-empty string");
+    expect(thenReads).toBe(0);
+    expect(() => createWafer({ preserveReasoning: "always" as never })).toThrow(
+      'Wafer preserveReasoning must be false, true, or "auto"'
+    );
+    expect(() => createWafer({ zdr: "yes" as never })).toThrow(
+      "Wafer zdr must be a boolean"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("returns a callable provider that builds a language model object", () => {
     const wafer = createWafer({ apiKey: "k" });
     expect(typeof wafer).toBe("function");

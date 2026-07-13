@@ -4,6 +4,80 @@ import { captureFetch } from "../test-utils";
 import { createFriendli } from "./friendli";
 
 describe("createFriendli", () => {
+  it("consumes Promise-valued provider settings and header siblings", async () => {
+    expect(() =>
+      createFriendli(Promise.reject(new Error("async settings")) as never)
+    ).toThrow("Friendli settings must be synchronous");
+    expect(() =>
+      createFriendli({
+        apiKey: Promise.reject(new Error("async api key")) as never,
+        fetch: Promise.reject(new Error("async fetch")) as never,
+      })
+    ).toThrow("Friendli settings must be synchronous");
+    expect(() =>
+      createFriendli({
+        headers: {
+          first: Promise.reject(new Error("async header one")),
+          second: Promise.reject(new Error("async header two")),
+        } as never,
+      })
+    ).toThrow("Friendli header values must be synchronous");
+    expect(() =>
+      createFriendli({
+        queryParams: {
+          first: Promise.reject(new Error("async query first")),
+          second: Promise.reject(new Error("async query second")),
+        } as never,
+      })
+    ).toThrow("Friendli query parameter values must be synchronous");
+    const friendli = createFriendli({ apiKey: "k" });
+    expect(() =>
+      friendli(Promise.reject(new Error("async model id")) as never)
+    ).toThrow("Friendli modelId must be a synchronous non-empty string");
+    expect(() => friendli("")).toThrow(
+      "Friendli modelId must be a synchronous non-empty string"
+    );
+    expect(() => createFriendli({ apiKey: 42 as never })).toThrow(
+      "Friendli apiKey must be a non-empty bounded string"
+    );
+    expect(() => createFriendli({ fetch: {} as never })).toThrow(
+      "Friendli fetch must be a function"
+    );
+    let invalidReads = 0;
+    const invalidHeaders = Object.defineProperties(
+      {},
+      {
+        "bad header": {
+          enumerable: true,
+          get() {
+            invalidReads += 1;
+            throw new Error("invalid header value must not be read");
+          },
+        },
+        later: {
+          enumerable: true,
+          value: Promise.reject(new Error("async invalid-name sibling")),
+        },
+      }
+    );
+    expect(() => createFriendli({ headers: invalidHeaders as never })).toThrow(
+      "Friendli header names must use valid HTTP syntax"
+    );
+    expect(invalidReads).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("snapshots query parameters before requests", async () => {
+    const { fetch, captured } = captureFetch();
+    const queryParams = { region: "stable" };
+    const friendli = createFriendli({ apiKey: "k", fetch, queryParams });
+    queryParams.region = "mutated";
+
+    await generateText({ model: friendli("m"), prompt: "hi" });
+    expect(captured.url).toContain("region=stable");
+    expect(captured.url).not.toContain("mutated");
+  });
+
   it("returns a callable provider that builds a language model object", () => {
     const friendli = createFriendli({ apiKey: "k" });
     expect(typeof friendli).toBe("function");

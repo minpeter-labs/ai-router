@@ -1,7 +1,9 @@
 import {
   createReasoningTransform,
   reasoningMiddleware,
+  snapshotReasoningRequestBody,
 } from "../../core/reasoning";
+import { consumeGenuinePromise } from "../../core/runtime-types";
 
 export type PreserveReasoning = boolean | "auto";
 
@@ -50,10 +52,16 @@ export const waferReasoningTransform = createReasoningTransform(
 export function createWaferRequestTransform(
   preserveReasoning: PreserveReasoning = false
 ): (args: Record<string, unknown>) => Record<string, unknown> {
+  if (consumeGenuinePromise(preserveReasoning)) {
+    throw new TypeError("preserveReasoning must be synchronous");
+  }
   return (args: Record<string, unknown>): Record<string, unknown> => {
+    const captured = snapshotReasoningRequestBody(args);
     const requestedPreserveReasoning =
-      parsePreserveReasoning(args.preserveReasoning) ?? preserveReasoning;
-    const { preserveReasoning: _omit, ...bodyWithoutAlias } = args;
+      parsePreserveReasoning(captured.preserveReasoning) ?? preserveReasoning;
+    const bodyWithoutAlias = snapshotReasoningRequestBody(captured, [
+      "preserveReasoning",
+    ]);
     const body = waferReasoningTransform(bodyWithoutAlias);
 
     if (!shouldPreserveReasoning(body, requestedPreserveReasoning)) {

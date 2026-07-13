@@ -7,6 +7,41 @@ import { createReasoningTransform, reasoningMiddleware } from "./reasoning";
 // src/provider/<name>/reasoning.test.ts).
 
 describe("createReasoningTransform", () => {
+  it("consumes Promise-valued request fields and async apply results", async () => {
+    const transform = createReasoningTransform((() =>
+      Promise.reject(new Error("async apply result"))) as never);
+    expect(() =>
+      transform({
+        first: Promise.reject(new Error("async body first")),
+        reasoning_effort: "high",
+        second: Promise.reject(new Error("async body second")),
+      })
+    ).toThrow("reasoning request body fields must be synchronous");
+    expect(() => transform({ reasoning_effort: "high" })).toThrow(
+      "applyReasoning must return synchronously"
+    );
+    expect(() =>
+      createReasoningTransform(
+        Promise.reject(new Error("async apply slot")) as never
+      )
+    ).toThrow("applyReasoning must be a synchronous function");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("does not inspect arbitrary thenable body extensions", () => {
+    let thenReads = 0;
+    const extension = Object.defineProperty({}, ["th", "en"].join(""), {
+      get() {
+        thenReads += 1;
+        throw new Error("then must not be inspected");
+      },
+    });
+    const { transform } = makeSpy();
+
+    expect(transform({ extension })).toEqual({ extension });
+    expect(thenReads).toBe(0);
+  });
+
   // A transform whose applyReasoning records the `enabled` flag it was handed and
   // writes a sentinel into the body, so we can assert the generic behavior
   // (classification, stripping, immutability) independent of any dialect.
@@ -105,6 +140,41 @@ describe("reasoningMiddleware", () => {
       model: {},
     } as unknown as Parameters<typeof transformParams>[0]);
   };
+
+  it("consumes Promise-valued params, provider options, and provider names", async () => {
+    expect(() =>
+      transform({
+        first: Promise.reject(new Error("async param first")),
+        reasoning: "high",
+        second: Promise.reject(new Error("async param second")),
+      })
+    ).toThrow("reasoning request body fields must be synchronous");
+    expect(() =>
+      transform({
+        providerOptions: {
+          friendli: Promise.reject(new Error("async provider settings")),
+        },
+        reasoning: "high",
+      })
+    ).toThrow("reasoning request body fields must be synchronous");
+    expect(() =>
+      reasoningMiddleware(
+        Promise.reject(new Error("async provider name")) as never
+      )
+    ).toThrow("reasoning provider name must be synchronous and bounded");
+    const hook = reasoningMiddleware("friendli").transformParams;
+    expect(() =>
+      hook?.(Promise.reject(new Error("async hook arguments")) as never)
+    ).toThrow("reasoning request body must be synchronous");
+    expect(() =>
+      hook?.({
+        model: Promise.reject(new Error("async model sibling")),
+        params: Promise.reject(new Error("async params")),
+        type: "generate",
+      } as never)
+    ).toThrow("reasoning request body fields must be synchronous");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 
   for (const reasoning of [
     "none",

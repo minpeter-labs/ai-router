@@ -53,7 +53,10 @@
     }
   },
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json",
+    "build": "tsup && tsc -p tsconfig.build.json && node scripts/fix-declaration-imports.mjs && pnpm check:package-types && pnpm check:package-runtime && pnpm check:package-artifacts",
+    "check:package-artifacts": "node scripts/check-package-artifacts.mjs",
+    "check:package-runtime": "node scripts/check-package-runtime.mjs",
+    "check:package-types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck false --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM,DOM.Iterable --types node test-d/package-consumer.mts test-d/json-schema.d.ts",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",

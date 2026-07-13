@@ -4,6 +4,61 @@ import { captureFetch } from "../test-utils";
 import { createOpenGateway } from "./opengateway";
 
 describe("createOpenGateway", () => {
+  it("consumes Promise-valued settings before provider configuration fails", async () => {
+    expect(() =>
+      createOpenGateway(
+        Promise.reject(new Error("async provider settings")) as never
+      )
+    ).toThrow("OpenGateway settings must be synchronous");
+
+    const settings = Object.defineProperties(
+      {},
+      {
+        apiKey: {
+          get() {
+            throw new Error("apiKey accessor failed");
+          },
+        },
+        reasoningDetailsStore: {
+          value: Promise.reject(new Error("async store sibling")),
+        },
+      }
+    );
+    expect(() => createOpenGateway(settings as never)).toThrow(
+      "apiKey accessor failed"
+    );
+
+    expect(() =>
+      createOpenGateway({
+        apiKey: Promise.reject(new Error("async api key")) as never,
+        fetch: Promise.reject(new Error("async fetch")) as never,
+      })
+    ).toThrow("OpenGateway settings must be synchronous");
+    expect(() =>
+      createOpenGateway({
+        headers: {
+          first: Promise.reject(new Error("async header one")),
+          second: Promise.reject(new Error("async header two")),
+        } as never,
+      })
+    ).toThrow("OpenGateway header values must be synchronous");
+    expect(() =>
+      createOpenGateway({
+        queryParams: {
+          value: Promise.reject(new Error("async query")),
+        } as never,
+      })
+    ).toThrow("OpenGateway query parameter values must be synchronous");
+    const opengateway = createOpenGateway({ apiKey: "k" });
+    expect(() =>
+      opengateway(Promise.reject(new Error("async model id")) as never)
+    ).toThrow("OpenGateway modelId must be a synchronous non-empty string");
+    expect(() => createOpenGateway({ supportedUrls: [] as never })).toThrow(
+      "OpenGateway supportedUrls must be a function"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("returns a callable provider that builds a language model object", () => {
     const opengateway = createOpenGateway({ apiKey: "k" });
     expect(typeof opengateway).toBe("function");
