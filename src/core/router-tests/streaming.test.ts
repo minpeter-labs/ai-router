@@ -1,4 +1,7 @@
-import type { LanguageModelV4CallOptions } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+} from "@ai-sdk/provider";
 import { streamText } from "ai";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { describe, expect, it } from "vitest";
@@ -7,7 +10,10 @@ import {
   asV4,
   collectStream,
   failingStreamModel,
+  finishReason,
+  promiseLike,
   streamingModel,
+  usage,
 } from "./test-kit";
 
 describe("createRouter — streaming", () => {
@@ -24,6 +30,33 @@ describe("createRouter — streaming", () => {
     );
     expect(acc).toBe("Hello, world!");
     expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  it("accepts a provider doStream PromiseLike result", async () => {
+    const model = {
+      specificationVersion: "v4" as const,
+      modelId: "promise-like",
+      provider: "mock",
+      supportedUrls: {},
+      doGenerate: () => Promise.reject(new Error("unused")),
+      doStream: () =>
+        promiseLike({
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start" as const, warnings: [] },
+              { id: "1", type: "text-start" as const },
+              { delta: "promise-like", id: "1", type: "text-delta" as const },
+              { id: "1", type: "text-end" as const },
+              { finishReason, type: "finish" as const, usage },
+            ],
+          }),
+        }),
+    } satisfies LanguageModelV4;
+    const route = createRouter({ models: { chat: [model] } });
+
+    await expect(
+      collectStream(streamText({ model: route("chat"), prompt: "hi" }))
+    ).resolves.toBe("promise-like");
   });
 
   it("falls back to the secondary when the primary doStream throws", async () => {

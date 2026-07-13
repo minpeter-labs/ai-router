@@ -4,7 +4,7 @@ import {
   hasInvalidHttpHeaderValueCharacter,
   isValidHttpHeaderName,
 } from "./http-headers";
-import { snapshotJsonValue } from "./json-value";
+import { snapshotProviderBody } from "./provider-body";
 import {
   consumeGenuinePromise,
   consumeOwnDataPromiseFields,
@@ -36,11 +36,7 @@ export function safeStreamRequest(
     if (body === undefined) {
       return {};
     }
-    if (consumeGenuinePromise(body)) {
-      return {};
-    }
-    const snapshot = snapshotJsonValue(body);
-    return snapshot.valid ? { body: snapshot.value } : {};
+    return { body: snapshotProviderBody(body) };
   } catch {
     return;
   }
@@ -145,8 +141,7 @@ export function copyStreamRequest(
   if (request.body === undefined) {
     return {};
   }
-  const snapshot = snapshotJsonValue(request.body);
-  return snapshot.valid ? { body: snapshot.value } : {};
+  return { body: snapshotProviderBody(request.body) };
 }
 
 export function copyStreamResponse(

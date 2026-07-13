@@ -6,25 +6,19 @@ import {
   RouterTimerError,
 } from "../timeout";
 import { withTimeout } from "../timeout-operation";
+import { promiseLike } from "./test-kit";
 
 describe("withTimeout", () => {
-  it("does not assimilate arbitrary provider thenable extensions", async () => {
-    let thenReads = 0;
-    const operation = () =>
-      Object.defineProperty({}, ["th", "en"].join(""), {
-        get() {
-          thenReads += 1;
-          throw new Error("then extension must not run");
-        },
-      }) as never;
+  it("assimilates provider PromiseLike operation results", async () => {
+    const result = promiseLike("ok");
+    const then = vi.spyOn(result, "then");
+    const operation = () => result;
 
-    await expect(withTimeout(operation, undefined, undefined)).rejects.toThrow(
-      "provider operation must return a genuine Promise"
+    await expect(withTimeout(operation, undefined, undefined)).resolves.toBe(
+      "ok"
     );
-    await expect(withTimeout(operation, 1000, undefined)).rejects.toThrow(
-      "provider operation must return a genuine Promise"
-    );
-    expect(thenReads).toBe(0);
+    await expect(withTimeout(operation, 1000, undefined)).resolves.toBe("ok");
+    expect(then).toHaveBeenCalledTimes(2);
   });
 
   it("does not require AbortController without timeout or caller cancellation", async () => {

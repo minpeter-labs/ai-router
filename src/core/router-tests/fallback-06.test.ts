@@ -142,25 +142,26 @@ describe("createRouter — fallback", () => {
     }
   });
 
-  it("consumes rejected Promise generate metadata before fallback", async () => {
+  it("preserves and consumes Promise-valued opaque telemetry bodies", async () => {
+    const body = Promise.reject(new Error("opaque request body rejected"));
     const primary = new MockLanguageModelV4({
       doGenerate: async () => ({
-        content: [{ text: "unusable", type: "text" }],
+        content: [{ text: "usable", type: "text" }],
         finishReason,
-        request: {
-          body: Promise.reject(new Error("async request body unsupported")),
-        },
+        request: { body },
         usage,
         warnings: [],
       }),
     });
+    const fallback = okModel("must not run");
     const route = createRouter({
-      models: { chat: [primary, okModel("async metadata fallback")] },
+      models: { chat: [primary, fallback] },
     });
 
-    await expect(
-      generateText({ model: route("chat"), prompt: "hi" })
-    ).resolves.toMatchObject({ text: "async metadata fallback" });
+    const result = await asV4(route("chat")).doGenerate(genOptions);
+
+    expect(result.request?.body).toBe(body);
+    expect(fallback.doGenerateCalls).toHaveLength(0);
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 

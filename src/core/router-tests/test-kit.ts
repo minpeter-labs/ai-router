@@ -30,6 +30,17 @@ export const EXAMPLE_HTTPS_RE = /^https:\/\/example\.com\/.*$/;
 export const MUTABLE_EXAMPLE_RE = /^https:\/\/example\.com\//;
 export const MAX_ATTEMPTS_RE = /maxAttempts/;
 
+export function promiseLike<T>(value: T): PromiseLike<T> {
+  const method: PromiseLike<T>["then"] = (onfulfilled, onrejected) =>
+    Promise.resolve(value).then(onfulfilled, onrejected);
+  const result = {};
+  Object.defineProperty(result, ["th", "en"].join(""), {
+    configurable: true,
+    value: method,
+  });
+  return result as PromiseLike<T>;
+}
+
 export function okModel(text = "Hello, world!") {
   return new MockLanguageModelV4({
     provider: "mock",

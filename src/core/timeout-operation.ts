@@ -1,5 +1,5 @@
 import { addCapturedAbortListener } from "./abort-signal";
-import { consumeGenuinePromise, requireGenuinePromise } from "./runtime-types";
+import { consumeGenuinePromise } from "./runtime-types";
 import {
   abortControllerSafely,
   clearTimerSafely,
@@ -22,14 +22,13 @@ export async function withTimeout<T>(
     throw signalAbortReason(callerSignal);
   }
   const invoke = (signal: AbortSignal | undefined): Promise<T> =>
-    requireGenuinePromise<T>(
-      operation(signal),
-      (error) =>
-        new TypeError(
-          "ai-router: provider operation must return a genuine Promise",
-          { cause: error }
-        )
-    );
+    new Promise<T>((resolve, reject) => {
+      try {
+        resolve(operation(signal));
+      } catch (error) {
+        reject(error);
+      }
+    });
   if (timeoutMs === undefined && callerSignal === undefined) {
     return await invoke(undefined);
   }

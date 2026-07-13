@@ -8,6 +8,7 @@ import {
   isValidHttpHeaderName,
 } from "./http-headers";
 import { snapshotJsonValue } from "./json-value";
+import { snapshotProviderBody } from "./provider-body";
 import {
   MAX_GENERATE_JSON_CHARACTERS,
   MAX_GENERATE_JSON_CONTAINERS,
@@ -58,6 +59,16 @@ export function synchronousGenerateValue(value: unknown): unknown {
 
 export function generateField(value: object, key: string | number): unknown {
   return synchronousGenerateValue(Reflect.get(value, key));
+}
+
+export function generateOpaqueField(
+  value: object,
+  key: string | number
+): unknown {
+  consumeOwnDataPromiseFields(value, [key]);
+  const captured = Reflect.get(value, key);
+  consumeGenuinePromise(captured);
+  return captured;
 }
 
 export function generateDiscriminant(
@@ -262,9 +273,9 @@ export function snapshotGenerateRequest(
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return value;
   }
-  const body = generateField(value, "body");
+  const body = generateOpaqueField(value, "body");
   return {
-    body: body === undefined ? undefined : snapshotRequiredJson(body, budget),
+    body: body === undefined ? undefined : snapshotProviderBody(body, budget),
   };
 }
 
@@ -324,21 +335,21 @@ export function snapshotGenerateResponse(
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return value;
   }
+  consumeOwnDataPromiseFields(value, ["body"]);
   const fields = captureGenerateFields(value, [
     "timestamp",
-    "body",
     "headers",
     "id",
     "modelId",
   ]);
   const timestamp = fields.timestamp;
-  const body = fields.body;
+  const body = generateOpaqueField(value, "body");
   let bodySnapshot: unknown;
   let headersSnapshot: unknown;
   captureGenerateSiblings([
     () => {
       bodySnapshot =
-        body === undefined ? undefined : snapshotRequiredJson(body, budget);
+        body === undefined ? undefined : snapshotProviderBody(body, budget);
     },
     () => {
       headersSnapshot = snapshotGenerateHeaders(fields.headers);

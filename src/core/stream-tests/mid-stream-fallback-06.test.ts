@@ -39,7 +39,8 @@ describe("createFallbackStream (mid-stream fallback)", () => {
         return value;
       },
     });
-    const body = { opaque: true };
+    const body = new FormData();
+    body.set("opaque", "true");
     const headers = Object.defineProperty(
       {},
       "x-provider",
@@ -74,6 +75,7 @@ describe("createFallbackStream (mid-stream fallback)", () => {
     }
 
     expect(wrapped.request).toEqual({ body });
+    expect(wrapped.request?.body).toBe(body);
     expect(wrapped.request).not.toBe(firstRequest);
     expect(wrapped.response).toEqual({
       headers: { "x-provider": "stable" },

@@ -205,4 +205,28 @@ describe("createRouter — fallback", () => {
     expect(Reflect.get(copiedHeaders, "__proto__")).toBe("literal");
     expect(Object.getPrototypeOf(copiedHeaders)).toBe(Object.prototype);
   });
+
+  it("preserves opaque request and response telemetry bodies", async () => {
+    const requestBody = new FormData();
+    requestBody.set("prompt", "hello");
+    const responseBody = new Uint8Array([1, 2, 3]);
+    const fallback = okModel("must not run");
+    const primary = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ text: "stable", type: "text" }],
+        finishReason,
+        request: { body: requestBody },
+        response: { body: responseBody },
+        usage,
+        warnings: [],
+      }),
+    });
+    const route = createRouter({ models: { chat: [primary, fallback] } });
+
+    const result = await asV4(route("chat")).doGenerate(genOptions);
+
+    expect(result.request?.body).toBe(requestBody);
+    expect(result.response?.body).toBe(responseBody);
+    expect(fallback.doGenerateCalls).toHaveLength(0);
+  });
 });
