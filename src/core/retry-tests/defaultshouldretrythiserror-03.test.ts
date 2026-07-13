@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { defaultShouldRetryThisError } from "../retry";
 
 describe("defaultShouldRetryThisError", () => {
+  const hasNativeErrorBrandCheck =
+    typeof (Error as unknown as { isError?: unknown }).isError === "function";
+
   it("reads an abort error name once", () => {
     let reads = 0;
     const error = Object.defineProperty(new Error("response stopped"), "name", {
@@ -19,12 +22,18 @@ describe("defaultShouldRetryThisError", () => {
     expect(reads).toBe(1);
   });
 
-  it("recognizes genuine cross-realm abort errors without trusting lookalikes", () => {
-    const crossRealm = runInNewContext(
-      'Object.assign(new Error("stopped"), { name: "ResponseAborted" })'
-    );
+  it.runIf(hasNativeErrorBrandCheck)(
+    "recognizes genuine cross-realm abort errors when the runtime can brand-check them",
+    () => {
+      const crossRealm = runInNewContext(
+        'Object.assign(new Error("stopped"), { name: "ResponseAborted" })'
+      );
 
-    expect(defaultShouldRetryThisError(crossRealm)).toBe(false);
+      expect(defaultShouldRetryThisError(crossRealm)).toBe(false);
+    }
+  );
+
+  it("does not trust abort-error lookalikes", () => {
     expect(
       defaultShouldRetryThisError({
         message: "not a genuine error",
