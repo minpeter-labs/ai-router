@@ -21,7 +21,17 @@ const sharedChunk = /^dist\/chunk-[A-Z0-9]+\.js$/;
 const sharedChunkBudget = 100 * kibibyte;
 
 export function packageFilesFromPackJson(value) {
-  const pack = Array.isArray(value) ? value[0] : value;
+  let pack = value;
+  if (Array.isArray(value)) {
+    pack = value.length === 1 ? value[0] : undefined;
+  } else if (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value.files)
+  ) {
+    const packages = Object.values(value);
+    pack = packages.length === 1 ? packages[0] : undefined;
+  }
   if (pack === null || typeof pack !== "object" || !Array.isArray(pack.files)) {
     throw new Error("npm pack returned an invalid JSON payload");
   }

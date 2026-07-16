@@ -27,7 +27,8 @@ describe("package artifact validation", () => {
   it.each([
     [{ files: [{ path: "package.json" }] }],
     [[{ files: [{ path: "package.json" }] }]],
-  ])("accepts npm pack object and array JSON shapes", (packJson) => {
+    [{ "@minpeter/ai-router": { files: [{ path: "package.json" }] } }],
+  ])("accepts supported npm pack JSON shapes", (packJson) => {
     expect(packageFilesFromPackJson(packJson)).toEqual(["package.json"]);
   });
 
@@ -35,6 +36,8 @@ describe("package artifact validation", () => {
     null,
     {},
     [],
+    [{ files: [] }, { files: [] }],
+    { first: { files: [] }, second: { files: [] } },
     { files: [null] },
     { files: [{}] },
   ])("rejects malformed npm pack JSON: %s", (packJson) => {
