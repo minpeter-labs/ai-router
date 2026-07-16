@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import {
   packageArtifactAllowedRootFiles,
+  packageFilesFromPackJson,
   validateExportTargets,
   validateJavaScriptArtifactSize,
   validateNoCredential,
@@ -16,8 +17,7 @@ const dist = new URL("../dist/", import.meta.url);
 const { stdout } = await execFileAsync("npm", ["pack", "--dry-run", "--json"], {
   cwd: root,
 });
-const [pack] = JSON.parse(stdout);
-const files = new Set(pack.files.map(({ path }) => path));
+const files = new Set(packageFilesFromPackJson(JSON.parse(stdout)));
 validateTarballPaths(files);
 
 const packageJson = JSON.parse(await readFile(new URL("package.json", root)));

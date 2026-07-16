@@ -20,6 +20,23 @@ const javascriptBudgets = new Map([
 const sharedChunk = /^dist\/chunk-[A-Z0-9]+\.js$/;
 const sharedChunkBudget = 100 * kibibyte;
 
+export function packageFilesFromPackJson(value) {
+  const pack = Array.isArray(value) ? value[0] : value;
+  if (pack === null || typeof pack !== "object" || !Array.isArray(pack.files)) {
+    throw new Error("npm pack returned an invalid JSON payload");
+  }
+  return pack.files.map((file) => {
+    if (
+      file === null ||
+      typeof file !== "object" ||
+      typeof file.path !== "string"
+    ) {
+      throw new Error("npm pack returned an invalid file entry");
+    }
+    return file.path;
+  });
+}
+
 export function validateTarballPaths(paths) {
   for (const path of paths) {
     if (
