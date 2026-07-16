@@ -3,9 +3,11 @@ import { retryAfterMsOfContext } from "./failure-retry-after";
 import {
   hasModelUnavailableCodeInDetails,
   hasProviderCredentialCodeInDetails,
+  hasProviderUnavailableCodeInDetails,
   hasRoutingUnitUnavailableDetails,
   isModelUnavailableCode,
   isProviderCredentialCode,
+  isProviderUnavailableCode,
   shouldRetryErrorSnapshot,
 } from "./retry";
 import { snapshotRetryErrorContext } from "./retry-snapshot";
@@ -164,14 +166,30 @@ function isHardAuthFailure(
     HARD_AUTH_DETAIL_CODE_RE.test(details) ||
     (statusCode === 403 &&
       !QUOTA_LIKE_RE.test(details) &&
-      !hasRoutingUnitUnavailableDetails(details)) ||
+      !hasRoutingUnitUnavailableEvidence(code, details)) ||
     (statusCode === 503 && MISSING_CREDENTIAL_RE.test(details))
   );
 }
 
-function hasModelUnavailableCode(code: unknown, details: string): boolean {
+function hasRoutingUnitUnavailableCodeEvidence(
+  code: unknown,
+  details: string
+): boolean {
   return (
-    isModelUnavailableCode(code) || hasModelUnavailableCodeInDetails(details)
+    isModelUnavailableCode(code) ||
+    hasModelUnavailableCodeInDetails(details) ||
+    isProviderUnavailableCode(code) ||
+    hasProviderUnavailableCodeInDetails(details)
+  );
+}
+
+function hasRoutingUnitUnavailableEvidence(
+  code: unknown,
+  details: string
+): boolean {
+  return (
+    hasRoutingUnitUnavailableCodeEvidence(code, details) ||
+    hasRoutingUnitUnavailableDetails(details)
   );
 }
 
@@ -184,7 +202,7 @@ function defaultFailureScope(
   if (hasCredentialCode(code, details)) {
     return "credential";
   }
-  if (hasModelUnavailableCode(code, details)) {
+  if (hasRoutingUnitUnavailableCodeEvidence(code, details)) {
     return "routing-unit";
   }
   if (PLAN_ACCESS_RE.test(details)) {
