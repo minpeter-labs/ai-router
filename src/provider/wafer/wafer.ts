@@ -4,17 +4,32 @@ import {
 } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { extractReasoningMiddleware, wrapLanguageModel } from "ai";
+import {
+  prepareProviderSettings,
+  rejectAsyncProviderSettingValues,
+  snapshotProviderHeaders,
+  snapshotProviderQueryParams,
+  validateCommonProviderSettings,
+} from "../provider-settings";
+import {
+  captureProviderConvertUsage,
+  captureProviderFetch,
+} from "../provider-settings-fetch";
+import {
+  captureProviderMetadataExtractor,
+  captureProviderModelId,
+} from "../provider-settings-metadata";
+import { captureProviderSupportedUrls } from "../provider-settings-urls";
 import type { PreserveReasoning } from "./reasoning";
 import {
   createWaferRequestTransform,
   waferReasoningMiddleware,
 } from "./reasoning";
+import { createZdrFetch, ZDR_HEADER } from "./zdr";
 
 export type { PreserveReasoning } from "./reasoning";
 
 const DEFAULT_BASE_URL = "https://pass.wafer.ai/v1";
-
-const ZDR_HEADER = "Wafer-ZDR";
 
 export interface CreateWaferSettings
   extends Omit<
@@ -82,20 +97,75 @@ export interface CreateWaferSettings
 export function createWafer(
   settings: CreateWaferSettings = {}
 ): (modelId: string) => LanguageModelV4 {
-  const { apiKey, baseURL, fetch, preserveReasoning, zdr, headers, ...rest } =
-    settings;
+  prepareProviderSettings(settings, "Wafer", ["preserveReasoning", "zdr"]);
+  const captured = {
+    apiKey: settings.apiKey,
+    baseURL: settings.baseURL,
+    convertUsage: settings.convertUsage,
+    fetch: settings.fetch,
+    headers: settings.headers,
+    includeUsage: settings.includeUsage,
+    metadataExtractor: settings.metadataExtractor,
+    preserveReasoning: settings.preserveReasoning,
+    queryParams: settings.queryParams,
+    supportedUrls: settings.supportedUrls,
+    supportsStructuredOutputs: settings.supportsStructuredOutputs,
+    zdr: settings.zdr,
+  };
+  rejectAsyncProviderSettingValues(Object.values(captured), "Wafer");
+  validateCommonProviderSettings(captured, "Wafer");
+  const metadataExtractor = captureProviderMetadataExtractor(
+    captured.metadataExtractor,
+    "Wafer"
+  );
+  const convertUsage = captureProviderConvertUsage(
+    captured.convertUsage,
+    "Wafer",
+    settings
+  );
+  const fetch = captureProviderFetch(captured.fetch, "Wafer", settings);
+  if (
+    captured.preserveReasoning !== undefined &&
+    captured.preserveReasoning !== false &&
+    captured.preserveReasoning !== true &&
+    captured.preserveReasoning !== "auto"
+  ) {
+    throw new TypeError(
+      'Wafer preserveReasoning must be false, true, or "auto"'
+    );
+  }
+  if (captured.zdr !== undefined && typeof captured.zdr !== "boolean") {
+    throw new TypeError("Wafer zdr must be a boolean");
+  }
+  const headers = snapshotProviderHeaders(captured.headers, "Wafer");
+  const queryParams = snapshotProviderQueryParams(
+    captured.queryParams,
+    "Wafer"
+  );
+  const supportedUrls = captureProviderSupportedUrls(
+    captured.supportedUrls,
+    "Wafer",
+    settings
+  );
   const provider = createOpenAICompatible({
-    ...rest,
+    convertUsage,
+    includeUsage: captured.includeUsage,
+    metadataExtractor,
+    queryParams,
+    supportedUrls,
+    supportsStructuredOutputs: captured.supportsStructuredOutputs,
     name: "wafer",
-    baseURL: baseURL ?? DEFAULT_BASE_URL,
-    apiKey: apiKey ?? process.env.WAFER_API_KEY,
-    headers: zdr ? { ...headers, [ZDR_HEADER]: "required" } : headers,
-    fetch: zdr ? createZdrFetch(fetch) : fetch,
-    transformRequestBody: createWaferRequestTransform(preserveReasoning),
+    baseURL: captured.baseURL ?? DEFAULT_BASE_URL,
+    apiKey: captured.apiKey ?? process.env.WAFER_API_KEY,
+    headers: captured.zdr ? { ...headers, [ZDR_HEADER]: "required" } : headers,
+    fetch: captured.zdr ? createZdrFetch(fetch) : fetch,
+    transformRequestBody: createWaferRequestTransform(
+      captured.preserveReasoning
+    ),
   });
   return (modelId: string) =>
     wrapLanguageModel({
-      model: provider(modelId),
+      model: provider(captureProviderModelId(modelId, "Wafer")),
       middleware: [
         // Wrap each model so a top-level `reasoning: 'none'` survives down to the
         // body (the AI SDK otherwise drops it before `transformRequestBody` runs).
@@ -107,15 +177,4 @@ export function createWafer(
         extractReasoningMiddleware({ tagName: "think" }),
       ],
     });
-}
-
-function createZdrFetch(
-  fetch: typeof globalThis.fetch | undefined
-): typeof globalThis.fetch {
-  const baseFetch = fetch ?? ((input, init) => globalThis.fetch(input, init));
-  return (input, init) => {
-    const requestHeaders = new Headers(init?.headers);
-    requestHeaders.set(ZDR_HEADER, "required");
-    return baseFetch(input, { ...init, headers: requestHeaders });
-  };
 }

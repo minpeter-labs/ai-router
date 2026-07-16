@@ -4,6 +4,35 @@ import { captureFetch } from "../test-utils";
 import { createOpenRouter } from "./openrouter";
 
 describe("createOpenRouter", () => {
+  it("consumes Promise-valued provider settings", async () => {
+    expect(() =>
+      createOpenRouter(Promise.reject(new Error("async settings")) as never)
+    ).toThrow("OpenRouter settings must be synchronous");
+    expect(() =>
+      createOpenRouter({
+        metadataExtractor: Promise.reject(
+          new Error("async metadata extractor")
+        ) as never,
+        supportedUrls: Promise.reject(new Error("async URLs")) as never,
+      })
+    ).toThrow("OpenRouter settings must be synchronous");
+    expect(() =>
+      createOpenRouter({
+        queryParams: {
+          value: Promise.reject(new Error("async query")),
+        } as never,
+      })
+    ).toThrow("OpenRouter query parameter values must be synchronous");
+    const openrouter = createOpenRouter({ apiKey: "k" });
+    expect(() =>
+      openrouter(Promise.reject(new Error("async model id")) as never)
+    ).toThrow("OpenRouter modelId must be a synchronous non-empty string");
+    expect(() =>
+      createOpenRouter({ metadataExtractor: "invalid" as never })
+    ).toThrow("OpenRouter metadataExtractor must be an object");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("returns a callable provider that builds a language model object", () => {
     const openrouter = createOpenRouter({ apiKey: "k" });
     expect(typeof openrouter).toBe("function");

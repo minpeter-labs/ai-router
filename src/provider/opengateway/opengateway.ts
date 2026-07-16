@@ -5,6 +5,19 @@ import {
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 
+import {
+  prepareProviderSettings,
+  rejectAsyncProviderSettingValues,
+  snapshotProviderHeaders,
+  snapshotProviderQueryParams,
+  validateCommonProviderSettings,
+} from "../provider-settings";
+import {
+  captureProviderConvertUsage,
+  captureProviderFetch,
+} from "../provider-settings-fetch";
+import { captureProviderModelId } from "../provider-settings-metadata";
+import { captureProviderSupportedUrls } from "../provider-settings-urls";
 import { createOpenGatewayMetadataExtractor } from "./metadata";
 import { createOpenGatewayReasoningRoundtripMiddleware } from "./reasoning-roundtrip";
 import {
@@ -45,27 +58,64 @@ export interface CreateOpenGatewaySettings
 export function createOpenGateway(
   settings: CreateOpenGatewaySettings = {}
 ): (modelId: string) => LanguageModelV4 {
-  const {
-    apiKey,
-    baseURL,
-    metadataExtractor,
-    reasoningDetailsRefMaxEntries,
-    reasoningDetailsRefTtlMs,
-    reasoningDetailsStore,
-    ...rest
-  } = settings;
+  prepareProviderSettings(settings, "OpenGateway", [
+    "reasoningDetailsRefMaxEntries",
+    "reasoningDetailsRefTtlMs",
+    "reasoningDetailsStore",
+  ]);
+  const captured = {
+    apiKey: settings.apiKey,
+    baseURL: settings.baseURL,
+    convertUsage: settings.convertUsage,
+    fetch: settings.fetch,
+    headers: settings.headers,
+    includeUsage: settings.includeUsage,
+    metadataExtractor: settings.metadataExtractor,
+    queryParams: settings.queryParams,
+    reasoningDetailsRefMaxEntries: settings.reasoningDetailsRefMaxEntries,
+    reasoningDetailsRefTtlMs: settings.reasoningDetailsRefTtlMs,
+    reasoningDetailsStore: settings.reasoningDetailsStore,
+    supportedUrls: settings.supportedUrls,
+    supportsStructuredOutputs: settings.supportsStructuredOutputs,
+  };
+  rejectAsyncProviderSettingValues(Object.values(captured), "OpenGateway");
+  validateCommonProviderSettings(captured, "OpenGateway");
+  const convertUsage = captureProviderConvertUsage(
+    captured.convertUsage,
+    "OpenGateway",
+    settings
+  );
+  const fetch = captureProviderFetch(captured.fetch, "OpenGateway", settings);
+  const headers = snapshotProviderHeaders(captured.headers, "OpenGateway");
+  const queryParams = snapshotProviderQueryParams(
+    captured.queryParams,
+    "OpenGateway"
+  );
+  const supportedUrls = captureProviderSupportedUrls(
+    captured.supportedUrls,
+    "OpenGateway",
+    settings
+  );
   const provider = createOpenAICompatible({
-    ...rest,
+    convertUsage,
+    fetch,
+    headers,
+    includeUsage: captured.includeUsage,
+    queryParams,
+    supportedUrls,
+    supportsStructuredOutputs: captured.supportsStructuredOutputs,
     name: "opengateway",
-    baseURL: baseURL ?? DEFAULT_BASE_URL,
-    apiKey: apiKey ?? process.env.OPENGATEWAY_API_KEY,
-    metadataExtractor: createOpenGatewayMetadataExtractor(metadataExtractor),
+    baseURL: captured.baseURL ?? DEFAULT_BASE_URL,
+    apiKey: captured.apiKey ?? process.env.OPENGATEWAY_API_KEY,
+    metadataExtractor: createOpenGatewayMetadataExtractor(
+      captured.metadataExtractor
+    ),
   });
   const resolvedReasoningDetailsStore =
-    reasoningDetailsStore ??
+    captured.reasoningDetailsStore ??
     createOpenGatewayReasoningDetailsStore({
-      maxEntries: reasoningDetailsRefMaxEntries,
-      ttlMs: reasoningDetailsRefTtlMs,
+      maxEntries: captured.reasoningDetailsRefMaxEntries,
+      ttlMs: captured.reasoningDetailsRefTtlMs,
     });
   const reasoningRoundtripMiddleware =
     createOpenGatewayReasoningRoundtripMiddleware({
@@ -73,7 +123,7 @@ export function createOpenGateway(
     });
   return (modelId: string) =>
     wrapLanguageModel({
-      model: provider(modelId),
+      model: provider(captureProviderModelId(modelId, "OpenGateway")),
       middleware: reasoningRoundtripMiddleware,
     });
 }

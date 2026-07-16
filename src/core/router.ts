@@ -1,404 +1,247 @@
-import type {
-  LanguageModelV4,
-  LanguageModelV4CallOptions,
-  LanguageModelV4GenerateResult,
-  LanguageModelV4StreamResult,
-} from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 
-import { CooldownState, resolveCooldown } from "./cooldown";
-import { detectModalities, supportsAll } from "./modality";
-import { resolveShouldRetry, safeShouldRetry, surfaceFailure } from "./retry";
-import { type ResolvedEntry, wrapStreamResult } from "./stream";
+import { AdmissionRegistry } from "./admission-utils";
+import { MemoryRouterHealthStore } from "./health-store";
+import { boundedEnumerableOwnKeys } from "./http-headers";
+import { snapshotFallback } from "./router-fallback-options";
+import { RouterLanguageModel } from "./router-language-model";
+import { orderingTokenSourceFor } from "./router-options";
+import {
+  consumeGenuinePromise,
+  consumeOwnDataPromiseFields,
+} from "./runtime-types";
 import type {
   CreateRouterOptions,
-  Modality,
-  OnRouterError,
   ProviderEntry,
-  ProviderEntryFactory,
-  ProviderEntryInstance,
-  ShouldRetryThisError,
+  Router,
+  RouterAdmissionSnapshot,
+  RouterHealthSnapshot,
+  RouterRetryBudgetSnapshot,
 } from "./types";
+
+const MAX_ROUTE_CANDIDATES = 10_000;
+const MAX_LOGICAL_ROUTES = 10_000;
+const MAX_TOTAL_ROUTE_CANDIDATES = 100_000;
+const MAX_LOGICAL_ID_LENGTH = 256;
 
 /**
  * A candidate entry normalized to a single internal shape, regardless of which
  * of the three accepted `ProviderEntry` forms the user wrote.
  */
-interface NormalizedEntry {
-  /** Model id for the fail-fast error message (factory form only). */
-  label?: string;
-  /** The user's original entry — surfaced verbatim on `onError`. */
-  original: ProviderEntry;
-  /** Produce the raw model (calls the factory, or returns the captured instance). */
-  raw: () => LanguageModel;
-  /** Declared modalities, or `undefined` for a universal (catch-all) candidate. */
-  supports?: Modality[];
-}
-
-/** Duck-type a value as a v4 `LanguageModel` (a bare instance candidate). */
-function isLanguageModelV4(value: unknown): value is LanguageModelV4 {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { specificationVersion?: unknown }).specificationVersion ===
-      "v4" &&
-    typeof (value as { doStream?: unknown }).doStream === "function"
+function snapshotRouteEntries(
+  logicalId: string,
+  entries: unknown
+): ProviderEntry[] {
+  if (consumeGenuinePromise(entries)) {
+    throw new Error(`ai-router: model id "${logicalId}" must be synchronous`);
+  }
+  if (!Array.isArray(entries)) {
+    throw new Error(
+      `ai-router: model id "${logicalId}" must map to a provider entry array`
+    );
+  }
+  let entryCount: number;
+  try {
+    entryCount = Reflect.get(entries, "length");
+  } catch {
+    throw new Error(
+      `ai-router: model id "${logicalId}" candidate array is unreadable`
+    );
+  }
+  if (!Number.isSafeInteger(entryCount) || entryCount < 0) {
+    throw new Error(
+      `ai-router: model id "${logicalId}" candidate array is unreadable`
+    );
+  }
+  if (entryCount === 0) {
+    throw new Error(
+      `ai-router: model id "${logicalId}" has no provider entries`
+    );
+  }
+  if (entryCount > MAX_ROUTE_CANDIDATES) {
+    throw new Error(
+      `ai-router: model id "${logicalId}" exceeds ${MAX_ROUTE_CANDIDATES} candidates`
+    );
+  }
+  consumeOwnDataPromiseFields(
+    entries,
+    Array.from({ length: entryCount }, (_, index) => index)
   );
-}
-
-/** Collapse any of the three `ProviderEntry` shapes into a {@link NormalizedEntry}. */
-function normalizeEntry(entry: ProviderEntry): NormalizedEntry {
-  // (1) Bare instance shorthand: a v4 model object used directly as a candidate.
-  if (isLanguageModelV4(entry)) {
-    return { original: entry, raw: () => entry };
-  }
-  // (2) Instance-object form: `{ model: <v4 model>, supports? }`.
-  const candidate = entry as ProviderEntryFactory | ProviderEntryInstance;
-  if (candidate.model !== null && typeof candidate.model === "object") {
-    const instance = candidate as ProviderEntryInstance;
-    return {
-      supports: instance.supports,
-      original: entry,
-      raw: () => instance.model,
-    };
-  }
-  // (3) Factory form: `{ provider, model: string, supports? }`.
-  const factory = candidate as ProviderEntryFactory;
-  return {
-    supports: factory.supports,
-    original: entry,
-    label: typeof factory.model === "string" ? factory.model : undefined,
-    raw: () => {
-      // Guard the (untyped JS) misuse where `model` is missing/not a string, so
-      // it fails with a clear message instead of `provider(undefined)`.
-      if (
-        typeof factory.provider !== "function" ||
-        typeof factory.model !== "string"
-      ) {
-        throw new Error(
-          "ai-router: a factory entry requires a `provider` function and a string `model`"
-        );
-      }
-      return factory.provider(factory.model);
-    },
-  };
-}
-
-/**
- * A delegating `LanguageModelV4` for one logical id.
- *
- * For every request it:
- *  1. Detects the input modalities from the prompt.
- *  2. Keeps the candidate entries whose `supports` covers them, in order.
- *  3. Tries each candidate; on failure it classifies the error (retry vs stop),
- *     calls `onError`, and falls through to the next one when retryable.
- *  4. On `doStream`, wraps the live stream so a mid-stream failure also falls
- *     back transparently (before any content has been emitted).
- *  5. Surfaces the original error for a single failure, or an `AggregateError`
- *     of all candidate errors when several fail.
- *
- * It forwards the call `options` verbatim — all candidates are V4 models with
- * identical option/result shapes, so no transformation is needed.
- */
-class RouterLanguageModel implements LanguageModelV4 {
-  readonly specificationVersion = "v4" as const;
-  readonly provider = "router";
-  readonly modelId: string;
-
-  private readonly normalized: NormalizedEntry[];
-  private readonly onError?: OnRouterError;
-  private readonly shouldRetry: ShouldRetryThisError;
-  private readonly retryAfterOutput: boolean;
-  private readonly cooldown?: CooldownState;
-
-  /** Cache of instantiated models, keyed by candidate index. */
-  private readonly modelCache = new Map<number, LanguageModelV4>();
-  /** Memoized conservative `supportedUrls` (computed once per instance). */
-  private supportedUrlsCache?: LanguageModelV4["supportedUrls"];
-
-  constructor(
-    logicalId: string,
-    entries: ProviderEntry[],
-    options: CreateRouterOptions
-  ) {
-    this.modelId = logicalId;
-    this.normalized = entries.map(normalizeEntry);
-    this.onError = options.onError;
-    const fallback = options.fallback;
-    this.shouldRetry = resolveShouldRetry(fallback?.shouldRetry);
-    this.retryAfterOutput = fallback?.retryAfterOutput ?? false;
-    const cfg = resolveCooldown(fallback?.cooldown);
-    this.cooldown = cfg ? new CooldownState(cfg) : undefined;
-  }
-
-  /**
-   * The set of URLs the router can pass through un-downloaded. The AI SDK reads
-   * this ONCE during call setup to decide whether to download+inline a URL or
-   * forward it raw — but it cannot know which candidate will actually serve the
-   * request. So we report only the support COMMON to every candidate: a URL is
-   * passed through only if all candidates handle it natively; otherwise the SDK
-   * inlines it (which any candidate accepts). Computed once and memoized.
-   */
-  get supportedUrls(): LanguageModelV4["supportedUrls"] {
-    this.supportedUrlsCache ??= this.computeSupportedUrls();
-    return this.supportedUrlsCache;
-  }
-
-  private computeSupportedUrls(): LanguageModelV4["supportedUrls"] {
-    // With multiple candidates the router cannot know which one will serve the
-    // request, so it conservatively reports NO native URL support — the SDK then
-    // downloads + inlines every URL, which any candidate accepts. A lone
-    // candidate can safely report its own support. Either way, a broken / non-v4
-    // first entry must not abort call setup (read before any fallback runs).
-    if (this.normalized.length !== 1) {
-      return {};
-    }
-    try {
-      return this.instantiate(0).supportedUrls;
-    } catch {
-      return {};
-    }
-  }
-
-  async doGenerate(
-    options: LanguageModelV4CallOptions
-  ): Promise<LanguageModelV4GenerateResult> {
-    const { candidates, startIndex } = this.selectCandidates(options);
-    this.assertHasCandidate(candidates);
-
-    const errors: unknown[] = [];
-    for (let k = startIndex; k < candidates.length; k++) {
-      const candidate = candidates[k];
-      try {
-        const result = await candidate.model.doGenerate(options);
-        this.commitSurvivor(candidate.fullIndex, errors.length > 0);
-        return result;
-      } catch (error) {
-        if (
-          !this.handleFailure(
-            error,
-            candidate,
-            k,
-            candidates,
-            errors,
-            "generate"
-          )
-        ) {
-          break;
-        }
-      }
-    }
-    throw surfaceFailure(errors, this.modelId);
-  }
-
-  async doStream(
-    options: LanguageModelV4CallOptions
-  ): Promise<LanguageModelV4StreamResult> {
-    const { candidates, startIndex } = this.selectCandidates(options);
-    this.assertHasCandidate(candidates);
-
-    const onAdvance = this.cooldown
-      ? (filteredIndex: number, hadFailure: boolean) =>
-          this.commitSurvivor(candidates[filteredIndex].fullIndex, hadFailure)
-      : undefined;
-
-    const errors: unknown[] = [];
-    for (let k = startIndex; k < candidates.length; k++) {
-      const candidate = candidates[k];
-      let result: LanguageModelV4StreamResult;
-      try {
-        // Errors thrown BEFORE the stream opens are caught here; errors that
-        // arrive AFTER it opens are handled inside wrapStreamResult.
-        result = await candidate.model.doStream(options);
-      } catch (error) {
-        if (
-          !this.handleFailure(
-            error,
-            candidate,
-            k,
-            candidates,
-            errors,
-            "stream-open"
-          )
-        ) {
-          break;
-        }
-        continue;
-      }
-      return wrapStreamResult({
-        logicalId: this.modelId,
-        candidates,
-        startIndex: k,
-        options,
-        firstResult: result,
-        shouldRetry: this.shouldRetry,
-        retryAfterOutput: this.retryAfterOutput,
-        onError: this.onError,
-        onAdvance,
-        priorErrors: errors,
-      });
-    }
-    throw surfaceFailure(errors, this.modelId);
-  }
-
-  /**
-   * Record the error, classify it, notify `onError`, and report whether the
-   * router should keep trying the next candidate (`true`) or stop (`false`).
-   */
-  private handleFailure(
-    error: unknown,
-    candidate: ResolvedEntry,
-    index: number,
-    candidates: ResolvedEntry[],
-    errors: unknown[],
-    phase: "generate" | "stream-open"
-  ): boolean {
-    errors.push(error);
-    const retry = safeShouldRetry(this.shouldRetry, error);
-    const hasNext = retry && index + 1 < candidates.length;
-    try {
-      this.onError?.({
-        logicalId: this.modelId,
-        entry: candidate.entry,
-        index,
-        error,
-        phase,
-        willRetry: hasNext,
-      });
-    } catch {
-      /* onError must not throw; ignore. */
-    }
-    return retry;
-  }
-
-  /**
-   * Commit a survivor into cooldown state, but only when reaching it actually
-   * involved an earlier candidate failing (`hadFailure`), or when it is the
-   * primary recovering (`fullIndex === 0`). A candidate reached merely because
-   * earlier entries were modality-filtered out must NOT become sticky —
-   * otherwise a later request of a different modality would skip a perfectly
-   * healthy higher-priority primary. No-op when cooldown is disabled.
-   */
-  private commitSurvivor(fullIndex: number, hadFailure: boolean): void {
-    if (hadFailure || fullIndex === 0) {
-      this.cooldown?.advanceTo(fullIndex);
-    }
-  }
-
-  private assertHasCandidate(candidates: ResolvedEntry[]): void {
-    if (candidates.length === 0) {
+  const snapshot: ProviderEntry[] = [];
+  let asyncEntry = false;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (!Object.hasOwn(entries, index)) {
       throw new Error(
-        `ai-router: no candidate for "${this.modelId}" supports the requested input modalities`
+        `ai-router: model id "${logicalId}" candidate array must not contain holes`
+      );
+    }
+    try {
+      const entry = Reflect.get(entries, index);
+      if (consumeGenuinePromise(entry)) {
+        asyncEntry = true;
+      } else {
+        snapshot.push(entry as ProviderEntry);
+      }
+    } catch {
+      throw new Error(
+        `ai-router: model id "${logicalId}" candidate entry ${index} is unreadable`
       );
     }
   }
+  if (asyncEntry) {
+    throw new Error(
+      `ai-router: model id "${logicalId}" candidates must be synchronous`
+    );
+  }
+  return snapshot;
+}
 
-  /** Lazily instantiate (and cache) the model for a candidate index. */
-  private instantiate(index: number): LanguageModelV4 {
-    // Cached models are always defined objects, so a present entry short-circuits
-    // without a second Map lookup (and never re-creates a candidate).
-    const cached = this.modelCache.get(index);
+/** Validate route cardinality before allocating long-lived model state. */
+function configuredRoutes(
+  models: CreateRouterOptions["models"]
+): [string, CreateRouterOptions["models"][string]][] {
+  const logicalIds = boundedEnumerableOwnKeys(models, MAX_LOGICAL_ROUTES);
+  if (logicalIds === undefined) {
+    throw new Error(
+      `ai-router: models must contain at most ${MAX_LOGICAL_ROUTES} logical routes`
+    );
+  }
+  consumeOwnDataPromiseFields(models, logicalIds);
+  const routes: [string, CreateRouterOptions["models"][string]][] = [];
+  let totalCandidates = 0;
+  for (const logicalId of logicalIds) {
+    if (
+      logicalId.trim().length === 0 ||
+      logicalId.length > MAX_LOGICAL_ID_LENGTH
+    ) {
+      throw new Error(
+        `ai-router: model ids must be non-empty and at most ${MAX_LOGICAL_ID_LENGTH} characters`
+      );
+    }
+    const entrySnapshot = snapshotRouteEntries(
+      logicalId,
+      Reflect.get(models, logicalId)
+    );
+    totalCandidates += entrySnapshot.length;
+    if (totalCandidates > MAX_TOTAL_ROUTE_CANDIDATES) {
+      throw new Error(
+        `ai-router: models exceed ${MAX_TOTAL_ROUTE_CANDIDATES} total candidates`
+      );
+    }
+    routes.push([logicalId, entrySnapshot]);
+  }
+  return routes;
+}
+
+/** Create a modality-aware router with provider fallback. */
+export function createRouter(options: CreateRouterOptions): Router {
+  if (consumeGenuinePromise(options)) {
+    throw new Error("ai-router: createRouter options must be synchronous");
+  }
+  if (typeof options !== "object" || options === null) {
+    throw new Error("ai-router: createRouter options must be an object");
+  }
+  const keys = ["fallback", "models", "onAttempt", "onError"] as const;
+  consumeOwnDataPromiseFields(options, keys);
+  const models = options.models;
+  const fallback = options.fallback;
+  const onAttempt = options.onAttempt;
+  const onError = options.onError;
+  let asyncOption = false;
+  for (const value of [models, fallback, onAttempt, onError]) {
+    if (consumeGenuinePromise(value)) {
+      asyncOption = true;
+    }
+  }
+  if (asyncOption) {
+    throw new Error("ai-router: createRouter options must be synchronous");
+  }
+  if (typeof models !== "object" || models === null || Array.isArray(models)) {
+    throw new Error("ai-router: models must be an object of candidate arrays");
+  }
+  const cache = new Map<string, RouterLanguageModel>();
+  const admissionRegistry = new AdmissionRegistry();
+  if (onAttempt !== undefined && typeof onAttempt !== "function") {
+    throw new Error("ai-router: onAttempt must be a function");
+  }
+  if (onError !== undefined && typeof onError !== "function") {
+    throw new Error("ai-router: onError must be a function");
+  }
+  const optionSnapshot: CreateRouterOptions = {
+    fallback: snapshotFallback(fallback),
+    models,
+    onAttempt,
+    onError,
+  };
+  const healthStore =
+    optionSnapshot.fallback?.healthStore ?? new MemoryRouterHealthStore();
+  const ordering = orderingTokenSourceFor(healthStore);
+
+  // Validate every logical route up front without constructing model wrappers
+  // or instantiating provider factories. This avoids partial registry growth
+  // when a later route pushes the aggregate configuration over its limit.
+  // Construction is now bounded and cannot fail due to route cardinality.
+  for (const [logicalId, entries] of configuredRoutes(models)) {
+    cache.set(
+      logicalId,
+      new RouterLanguageModel(
+        logicalId,
+        entries,
+        optionSnapshot,
+        admissionRegistry,
+        healthStore,
+        ordering
+      )
+    );
+  }
+
+  const route = (logicalId: string): LanguageModel => {
+    const cached = cache.get(logicalId);
     if (cached !== undefined) {
       return cached;
     }
-
-    const entry = this.normalized[index];
-    const model = entry.raw();
-    // Fail fast — outside the fallback loop — if a factory or instance entry did
-    // not yield a v4 language model (a bare model-id string, or an older spec).
-    // Otherwise it would crash deep inside the routed call and be swallowed into
-    // fallback as an opaque error.
-    if (!isLanguageModelV4(model)) {
-      throw new Error(
-        entry.label === undefined
-          ? `ai-router: entry for "${this.modelId}" did not provide a v4 LanguageModel`
-          : `ai-router: provider for "${this.modelId}" (model "${entry.label}") did not return a v4 LanguageModel`
-      );
-    }
-    this.modelCache.set(index, model);
-    return model;
-  }
-
-  /**
-   * Filter entries by the prompt's required modalities (preserving order and
-   * the full-array index), and compute the start position — candidate 0 by
-   * default, or the sticky survivor when cooldown is enabled.
-   */
-  private selectCandidates(options: LanguageModelV4CallOptions): {
-    candidates: ResolvedEntry[];
-    startIndex: number;
-  } {
-    const required = detectModalities(options.prompt);
-    const candidates: ResolvedEntry[] = [];
-    const router = this;
-    for (let i = 0; i < this.normalized.length; i++) {
-      if (supportsAll(this.normalized[i].supports, required)) {
-        const index = i;
-        candidates.push({
-          entry: this.normalized[i].original,
-          // Instantiate lazily, on first access, so a later candidate whose
-          // factory throws (or yields a non-v4 model) is treated as a normal
-          // candidate failure (classified + fallen through) rather than aborting
-          // the whole request before a healthy higher-priority candidate runs.
-          get model() {
-            return router.instantiate(index);
-          },
-          fullIndex: i,
-        });
-      }
-    }
-
-    let startIndex = 0;
-    if (this.cooldown) {
-      this.cooldown.checkAndReset();
-      const active = this.cooldown.current();
-      // Honor the sticky survivor ONLY when it is itself present in this request's
-      // modality-filtered set. If it was filtered out, re-probe from the top
-      // rather than skipping forward to a later candidate (which would silently
-      // bypass a healthy higher-priority candidate for this modality).
-      const pos = candidates.findIndex(
-        (candidate) => candidate.fullIndex === active
-      );
-      startIndex = pos === -1 ? 0 : pos;
-    }
-    return { candidates, startIndex };
-  }
-}
-
-/**
- * Create a modality-aware router with provider fallback.
- *
- * @returns a function `(logicalId) => LanguageModel` that resolves to a
- *   delegating language model accepted directly by `generateText`/`streamText`.
- *
- * @example
- * const route = createRouter({
- *   models: {
- *     chat: [
- *       { provider: createFriendli(),   model: 'K2-Instruct', supports: ['text'] },
- *       { provider: createOpenRouter(), model: 'moonshotai/kimi-k2', supports: ['text', 'image'] },
- *     ],
- *   },
- *   onError: ({ logicalId, error }) => console.warn(logicalId, error),
- * });
- *
- * await streamText({ model: route('chat'), prompt: 'hello' });
- */
-export function createRouter(
-  options: CreateRouterOptions
-): (logicalId: string) => LanguageModel {
-  const { models } = options;
-
-  return (logicalId: string): LanguageModel => {
-    const entries = models[logicalId];
-    if (!entries) {
-      throw new Error(`ai-router: unknown model id "${logicalId}"`);
-    }
-    if (entries.length === 0) {
-      throw new Error(
-        `ai-router: model id "${logicalId}" has no provider entries`
-      );
-    }
-    return new RouterLanguageModel(logicalId, entries, options);
+    throw new Error(`ai-router: unknown model id "${logicalId}"`);
   };
+  return Object.assign(route, {
+    getAdmissionSnapshot(logicalId?: string): RouterAdmissionSnapshot[] {
+      if (logicalId !== undefined) {
+        if (!cache.has(logicalId)) {
+          return [];
+        }
+        return cache.get(logicalId)?.admissionSnapshot() ?? [];
+      }
+      return [...cache.values()].flatMap((model) => model.admissionSnapshot());
+    },
+    getHealthSnapshot(logicalId?: string): RouterHealthSnapshot[] {
+      if (logicalId !== undefined) {
+        if (!cache.has(logicalId)) {
+          return [];
+        }
+        return cache.get(logicalId)?.healthSnapshot() ?? [];
+      }
+      const snapshots = [...cache.values()].flatMap((model) =>
+        model.healthSnapshot()
+      );
+      return [
+        ...new Map(
+          snapshots.map((snapshot) => [snapshot.key, snapshot] as const)
+        ).values(),
+      ];
+    },
+    getRetryBudgetSnapshot(logicalId?: string): RouterRetryBudgetSnapshot[] {
+      if (logicalId !== undefined) {
+        if (!cache.has(logicalId)) {
+          return [];
+        }
+        const snapshot = cache.get(logicalId)?.retryBudgetSnapshot();
+        return snapshot === undefined ? [] : [snapshot];
+      }
+      return [...cache.values()]
+        .map((model) => model.retryBudgetSnapshot())
+        .filter(
+          (snapshot): snapshot is RouterRetryBudgetSnapshot =>
+            snapshot !== undefined
+        );
+    },
+  });
 }
