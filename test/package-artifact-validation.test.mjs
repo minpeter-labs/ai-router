@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   exportTargets,
+  packageFilesFromPackJson,
   validateExportTargets,
   validateJavaScriptArtifactSize,
   validateNoCredential,
@@ -17,11 +18,29 @@ const ABSENT_TARGET_RE = /absent from tarball/;
 const CREDENTIAL_RE = /credential-shaped value/;
 const INVALID_EXPORTS_RE = /invalid or oversized/;
 const INVALID_MAP_RE = /non-source build input/;
+const INVALID_PACK_RE = /npm pack returned an invalid/;
 const NON_CANONICAL_RE = /not canonical/;
 const UNEXPECTED_ENTRY_RE = /unexpected npm tarball entry/;
 const SIZE_BUDGET_RE = /size budget/;
 
 describe("package artifact validation", () => {
+  it.each([
+    [{ files: [{ path: "package.json" }] }],
+    [[{ files: [{ path: "package.json" }] }]],
+  ])("accepts npm pack object and array JSON shapes", (packJson) => {
+    expect(packageFilesFromPackJson(packJson)).toEqual(["package.json"]);
+  });
+
+  it.each([
+    null,
+    {},
+    [],
+    { files: [null] },
+    { files: [{}] },
+  ])("rejects malformed npm pack JSON: %s", (packJson) => {
+    expect(() => packageFilesFromPackJson(packJson)).toThrow(INVALID_PACK_RE);
+  });
+
   it("accepts the intended package surface", () => {
     const files = new Set([
       "LICENSE",
