@@ -1,5 +1,11 @@
 # @minpeter/ai-router
 
+## 0.0.6
+
+### Patch Changes
+
+- 8b50095: Retry candidate-specific `provider_not_found` responses so unavailable pinned providers fall through in generate and stream routes.
+
 ## 0.0.5
 
 ### Patch Changes
