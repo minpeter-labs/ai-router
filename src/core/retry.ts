@@ -19,10 +19,14 @@ const RETRYABLE_STATUS = new Set([
 ]);
 
 const MODEL_UNAVAILABLE_RE =
-  /\bunknown model\b|\bmodel\b[\s\S]{0,160}\b(?:not found|not available|does not exist|not supported by any provider)\b|\bno (?:available )?endpoints? (?:(?:was|were) )?found\b|\brequested provider\b[\s\S]{0,160}\bnot available\b|\bunable to access model\b[\s\S]{0,160}\bsupported models?\b|\bupstream_waf_blocked\b|\bcloudflare waf\b[\s\S]{0,40}\b(?:block(?:ed)?|reject(?:ed|ion)?|den(?:y|ied))\b/i;
+  /\bunknown model\b|\bmodel\b[\s\S]{0,160}\b(?:not found|not available|does not exist|not supported by any provider)\b|\bno (?:available )?endpoints? (?:(?:was|were) )?found\b|\brequested provider\b[\s\S]{0,160}\bnot available\b|\bprovider\b[\s\S]{0,160}\bnot configured for model\b|\bunable to access model\b[\s\S]{0,160}\bsupported models?\b|\bupstream_waf_blocked\b|\bcloudflare waf\b[\s\S]{0,40}\b(?:block(?:ed)?|reject(?:ed|ion)?|den(?:y|ied))\b/i;
 const MODEL_UNAVAILABLE_CODE_RE = /\bmodel_(?:not_found|not_available)\b/i;
 const MODEL_UNAVAILABLE_DETAIL_CODE_RE =
   /\b(?:code|type|tag)\b[\s\S]{0,40}\bmodel_(?:not_found|not_available)\b/i;
+const PROVIDER_UNAVAILABLE_CODE_RE =
+  /\bprovider_(?:not_found|not_available)\b/i;
+const PROVIDER_UNAVAILABLE_DETAIL_CODE_RE =
+  /\b(?:code|type|tag)\b[\s\S]{0,40}\bprovider_(?:not_found|not_available)\b/i;
 const CREDIT_EXHAUSTED_RE =
   /\b(?:insufficient|low|exhausted|exceeded|depleted|no more|not enough|requires available|run out|out of)\b[\s\S]{0,100}\b(?:balance|credits?|funds|quota)\b|\b(?:balance|credits?|funds|quota)\b[\s\S]{0,100}\b(?:insufficient|low|exhausted|exceeded|depleted|no more|not enough|run out|out of)\b/i;
 const PROVIDER_CREDENTIAL_CODE_RE =
@@ -41,12 +45,20 @@ export function isModelUnavailableCode(value: unknown): boolean {
   return typeof value === "string" && MODEL_UNAVAILABLE_CODE_RE.test(value);
 }
 
+export function isProviderUnavailableCode(value: unknown): boolean {
+  return typeof value === "string" && PROVIDER_UNAVAILABLE_CODE_RE.test(value);
+}
+
 export function hasProviderCredentialCodeInDetails(value: string): boolean {
   return PROVIDER_CREDENTIAL_DETAIL_CODE_RE.test(value);
 }
 
 export function hasModelUnavailableCodeInDetails(value: string): boolean {
   return MODEL_UNAVAILABLE_DETAIL_CODE_RE.test(value);
+}
+
+export function hasProviderUnavailableCodeInDetails(value: string): boolean {
+  return PROVIDER_UNAVAILABLE_DETAIL_CODE_RE.test(value);
 }
 
 export function hasRoutingUnitUnavailableDetails(value: string): boolean {
@@ -128,7 +140,9 @@ export function shouldRetryErrorSnapshot(
   }
   if (
     isModelUnavailableCode(code) ||
-    hasModelUnavailableCodeInDetails(details)
+    hasModelUnavailableCodeInDetails(details) ||
+    isProviderUnavailableCode(code) ||
+    hasProviderUnavailableCodeInDetails(details)
   ) {
     return true;
   }

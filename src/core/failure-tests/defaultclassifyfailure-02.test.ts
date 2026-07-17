@@ -67,6 +67,34 @@ describe("defaultClassifyFailure", () => {
     }
   });
 
+  it("classifies provider_not_found failures as routing-unit scoped", () => {
+    for (const error of [
+      {
+        message:
+          "The provider 'infercom-k01' is not configured for model 'deepseek-ai/deepseek-v3.1'.",
+        statusCode: 404,
+      },
+      {
+        responseBody: {
+          error: {
+            code: "provider_not_found",
+            param: "provider.gateway.only",
+          },
+        },
+        statusCode: 404,
+      },
+      { code: "provider_not_available", statusCode: 403 },
+    ]) {
+      const classification = defaultClassifyFailure(error);
+      expect(classification).toMatchObject({
+        retryable: true,
+        scope: "routing-unit",
+        statusCode: error.statusCode,
+      });
+      expect(classification.cooldownMs).toBeUndefined();
+    }
+  });
+
   it("does not treat gateway WAF blocks as hard credential failures", () => {
     for (const message of ["upstream_waf_blocked", "Cloudflare WAF block"]) {
       const classification = defaultClassifyFailure({

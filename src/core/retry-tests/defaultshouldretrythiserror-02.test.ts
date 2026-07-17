@@ -110,6 +110,33 @@ describe("defaultShouldRetryThisError", () => {
     }
   });
 
+  it("retries provider_not_found responses for a configured route candidate", () => {
+    expect(
+      defaultShouldRetryThisError({
+        message:
+          "The provider 'infercom-k01' is not configured for model 'deepseek-ai/deepseek-v3.1'.",
+        statusCode: 404,
+      })
+    ).toBe(true);
+    expect(
+      defaultShouldRetryThisError({
+        responseBody: {
+          error: {
+            code: "provider_not_found",
+            param: "provider.gateway.only",
+          },
+        },
+        statusCode: 404,
+      })
+    ).toBe(true);
+    expect(
+      defaultShouldRetryThisError({
+        code: "provider_not_available",
+        statusCode: 410,
+      })
+    ).toBe(true);
+  });
+
   it("retries common 404 credit exhaustion phrasings", () => {
     for (const message of [
       "not enough credits",
@@ -166,7 +193,10 @@ describe("defaultShouldRetryThisError", () => {
     ).toBe(false);
     expect(
       defaultShouldRetryThisError({
-        responseBody: { model_not_available: false },
+        responseBody: {
+          model_not_available: false,
+          provider_not_found: false,
+        },
         statusCode: 404,
       })
     ).toBe(false);
