@@ -7,7 +7,7 @@ const suspiciousSecret = /(?:flp_|sk-|gh[pousr]_|npm_|AKIA)[A-Za-z0-9_-]{12,}/;
 const kibibyte = 1024;
 const javascriptBudgets = new Map([
   ["dist/index.js", 300 * kibibyte],
-  ["dist/index.cjs", 330 * kibibyte],
+  ["dist/index.cjs", 400 * kibibyte],
   ["dist/friendli.js", 20 * kibibyte],
   ["dist/friendli.cjs", 32 * kibibyte],
   ["dist/openrouter.js", 20 * kibibyte],
@@ -16,9 +16,12 @@ const javascriptBudgets = new Map([
   ["dist/opengateway.cjs", 110 * kibibyte],
   ["dist/wafer.js", 32 * kibibyte],
   ["dist/wafer.cjs", 48 * kibibyte],
+  ["dist/fusion.js", 20 * kibibyte],
+  ["dist/fusion.cjs", 400 * kibibyte],
 ]);
 const sharedChunk = /^dist\/chunk-[A-Z0-9]+\.js$/;
-const sharedChunkBudget = 100 * kibibyte;
+// Index + fusion share the router/fusion graph under ESM code-splitting.
+const sharedChunkBudget = 350 * kibibyte;
 
 export function packageFilesFromPackJson(value) {
   let pack = value;
@@ -104,7 +107,21 @@ export function validateSourceMap(map, name) {
     typeof map !== "object" ||
     map.version !== 3 ||
     !(map.sourceRoot === undefined || map.sourceRoot === "") ||
-    !Array.isArray(map.sources) ||
+    !Array.isArray(map.sources)
+  ) {
+    throw new Error(`sourcemap includes a non-source build input: ${name}`);
+  }
+  // ESM entry stubs that only re-export a shared chunk emit empty maps.
+  if (map.sources.length === 0) {
+    if (
+      map.sourcesContent !== undefined &&
+      !(Array.isArray(map.sourcesContent) && map.sourcesContent.length === 0)
+    ) {
+      throw new Error(`sourcemap includes a non-source build input: ${name}`);
+    }
+    return;
+  }
+  if (
     map.sources.some(
       (source) =>
         typeof source !== "string" ||

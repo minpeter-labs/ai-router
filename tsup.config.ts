@@ -7,6 +7,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     friendli: "src/provider/friendli/friendli.ts",
+    fusion: "src/core/fusion.ts",
     opengateway: "src/provider/opengateway/opengateway.ts",
     openrouter: "src/provider/openrouter/openrouter.ts",
     wafer: "src/provider/wafer/wafer.ts",

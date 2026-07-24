@@ -50,6 +50,12 @@
       "import": "./dist/wafer.js",
       "require": "./dist/wafer.cjs",
       "default": "./dist/wafer.js"
+    },
+    "./fusion": {
+      "types": "./dist/core/fusion.d.ts",
+      "import": "./dist/fusion.js",
+      "require": "./dist/fusion.cjs",
+      "default": "./dist/fusion.js"
     }
   },
   "scripts": {
@@ -98,6 +104,7 @@
     "vercel-ai-sdk",
     "router",
     "fallback",
+    "fusion",
     "llm",
     "openai-compatible",
     "friendli",

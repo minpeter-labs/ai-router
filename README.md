@@ -221,6 +221,77 @@ Build validation checks every public runtime/type export and enforces package
 artifact budgets so provider-only entry points do not pull in the router
 runtime accidentally.
 
+## Fusion
+
+`./fusion` runs a **panel** of models in parallel, has a **judge** compare their
+answers into a structured analysis (consensus / contradictions / blind spots /
+…), and has a **synth** model write the final answer from that analysis. It's a
+local, provider-agnostic take on multi-model deliberation — built only on
+`LanguageModelV4` calls, with no dependency on any hosted fusion service.
+
+```ts
+import { createFusion } from '@minpeter/ai-router/fusion';
+import { createOpenRouter } from '@minpeter/ai-router/openrouter';
+import { generateText } from 'ai';
+
+const or = createOpenRouter();
+
+const fusion = createFusion({
+  panel: [
+    or('anthropic/claude-opus-4'),
+    or('openai/gpt-5'),
+    or('google/gemini-2.5-pro'),
+  ],
+  // judge defaults to the first surviving panel member; synth defaults to the judge.
+});
+
+const { text, providerMetadata } = await generateText({
+  model: fusion, // a plain LanguageModelV4 — drops into generateText/streamText
+  prompt: 'What are the strongest arguments for and against carbon taxes?',
+});
+
+// The structured analysis is attached for inspection:
+console.log(providerMetadata?.fusion?.analysis);
+```
+
+`createFusion` returns a `LanguageModelV4`, so it composes with the router both
+ways — a fusion model can be a router candidate, and a router (per-slot fallback)
+can be a panel member:
+
+```ts
+createFusion({
+  panel: [
+    // this slot has its own ordered fallback (reuses the router internally)
+    { fallback: [
+      { provider: friendli,   model: 'K2.5',               supports: ['text'] },
+      { provider: openrouter, model: 'moonshotai/kimi-k2.5', supports: ['text'] },
+    ] },
+    openrouter('openai/gpt-5'),
+  ],
+});
+```
+
+For each request fusion:
+
+1. Filters the panel to members that can handle the prompt's modalities.
+2. Answers in parallel, fault-tolerant — a member that fails is dropped (see
+   `onError` / `minPanelSuccess`), the rest proceed.
+3. Has the judge return structured JSON; if it fails or returns junk, fusion
+   degrades to reconciling the raw answers rather than erroring.
+4. Streams **only** the final answer (`doStream`); the panel and judge are
+   buffered. `includeAnalysis: 'reasoning'` also surfaces the analysis as a
+   reasoning block; `'metadata'` (default) attaches it to
+   `providerMetadata.fusion`.
+
+Key options: `judge`, `synth`, `panelTemperature` / `judgeTemperature` /
+`synthTemperature`, `minPanelSuccess`, `onInsufficientPanel`, `concurrency`,
+`includeAnalysis`, `modalityBehavior`, `onEvent`, `onError`. Nested fusion is
+bounded by a recursion guard. Web search/fetch is intentionally out of scope for
+now — panel/judge run without tools.
+
+> Cost note: a panel of _N_ models is _N_ + 2 completions per request. Reach for
+> fusion when being right matters more than the extra calls.
+
 ## License
 
 MIT

@@ -1,5 +1,6 @@
 import {
   type AdaptiveConcurrencyConfig,
+  createFusion,
   createRouter,
   MemoryRouterHealthStore,
   RouterConcurrencyError,
@@ -7,6 +8,7 @@ import {
   RouterTimeoutError,
 } from "@minpeter/ai-router";
 import { createFriendli } from "@minpeter/ai-router/friendli";
+import { createFusion as createFusionSubpath } from "@minpeter/ai-router/fusion";
 import { createOpenGateway } from "@minpeter/ai-router/opengateway";
 import { createOpenRouter } from "@minpeter/ai-router/openrouter";
 import { createWafer } from "@minpeter/ai-router/wafer";
@@ -25,6 +27,8 @@ export const packageApiSmoke = [
   RouterConcurrencyError,
   RouterTimeoutError,
   createFriendli,
+  createFusion,
+  createFusionSubpath,
   createOpenGateway,
   createOpenRouter,
   createWafer,

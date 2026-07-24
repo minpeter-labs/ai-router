@@ -108,7 +108,10 @@ describe("package artifact validation", () => {
       validateJavaScriptArtifactSize("dist/opengateway.js", 110 * 1024 + 1)
     ).toThrow(SIZE_BUDGET_RE);
     expect(() =>
-      validateJavaScriptArtifactSize("dist/chunk-ABC123.js", 100 * 1024 + 1)
+      validateJavaScriptArtifactSize("dist/fusion.js", 20 * 1024)
+    ).not.toThrow();
+    expect(() =>
+      validateJavaScriptArtifactSize("dist/chunk-ABC123.js", 350 * 1024 + 1)
     ).toThrow(SIZE_BUDGET_RE);
     expect(() =>
       validateJavaScriptArtifactSize("dist/unbudgeted.js", 1)

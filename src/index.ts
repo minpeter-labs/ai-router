@@ -1,6 +1,17 @@
 export { RouterConcurrencyError } from "./core/admission-utils";
 export { defaultClassifyFailure } from "./core/failure";
 export { retryAfterMsOf } from "./core/failure-retry-after";
+export type {
+  FusionAnalysis,
+  FusionEvent,
+  FusionMember,
+  FusionMemberConfig,
+  FusionOptions,
+  FusionPanelItem,
+  FusionSynthSource,
+  OnFusionError,
+} from "./core/fusion";
+export { createFusion, MAX_FUSION_DEPTH } from "./core/fusion";
 export {
   MemoryRouterHealthStore,
   RouterHealthUnavailableError,

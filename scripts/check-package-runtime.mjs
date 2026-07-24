@@ -3,7 +3,9 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const entries = [
   ["@minpeter/ai-router", "createRouter"],
+  ["@minpeter/ai-router", "createFusion"],
   ["@minpeter/ai-router/friendli", "createFriendli"],
+  ["@minpeter/ai-router/fusion", "createFusion"],
   ["@minpeter/ai-router/opengateway", "createOpenGateway"],
   ["@minpeter/ai-router/openrouter", "createOpenRouter"],
   ["@minpeter/ai-router/wafer", "createWafer"],
