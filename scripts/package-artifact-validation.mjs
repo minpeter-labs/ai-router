@@ -115,9 +115,7 @@ export function validateSourceMap(map, name) {
   if (map.sources.length === 0) {
     if (
       map.sourcesContent !== undefined &&
-      !(
-        Array.isArray(map.sourcesContent) && map.sourcesContent.length === 0
-      )
+      !(Array.isArray(map.sourcesContent) && map.sourcesContent.length === 0)
     ) {
       throw new Error(`sourcemap includes a non-source build input: ${name}`);
     }
