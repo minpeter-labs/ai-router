@@ -1,6 +1,6 @@
 {
   "name": "@minpeter/ai-router",
-  "version": "0.0.1",
+  "version": "0.0.6",
   "description": "Provider-agnostic, modality-aware language model router with fallback for the Vercel AI SDK.",
   "type": "module",
   "license": "MIT",
@@ -11,7 +11,7 @@
   },
   "homepage": "https://github.com/minpeter-labs/ai-router#readme",
   "bugs": "https://github.com/minpeter-labs/ai-router/issues",
-  "packageManager": "pnpm@11.3.0",
+  "packageManager": "pnpm@11.9.0+sha512.bd682d5d03fe525ef7c9fd6780c6884d1e756ac4c9c9fe00c538782824310dcf90e3ddc4f53835f06dfaebd5085e41855e0bcbb3b60de2ac5bbab89e5036f03b",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,26 +28,41 @@
       "default": "./dist/index.js"
     },
     "./friendli": {
-      "types": "./dist/friendli.d.ts",
+      "types": "./dist/provider/friendli/friendli.d.ts",
       "import": "./dist/friendli.js",
       "require": "./dist/friendli.cjs",
       "default": "./dist/friendli.js"
     },
     "./openrouter": {
-      "types": "./dist/openrouter.d.ts",
+      "types": "./dist/provider/openrouter/openrouter.d.ts",
       "import": "./dist/openrouter.js",
       "require": "./dist/openrouter.cjs",
       "default": "./dist/openrouter.js"
     },
+    "./opengateway": {
+      "types": "./dist/provider/opengateway/opengateway.d.ts",
+      "import": "./dist/opengateway.js",
+      "require": "./dist/opengateway.cjs",
+      "default": "./dist/opengateway.js"
+    },
+    "./wafer": {
+      "types": "./dist/provider/wafer/wafer.d.ts",
+      "import": "./dist/wafer.js",
+      "require": "./dist/wafer.cjs",
+      "default": "./dist/wafer.js"
+    },
     "./fusion": {
-      "types": "./dist/fusion.d.ts",
+      "types": "./dist/core/fusion.d.ts",
       "import": "./dist/fusion.js",
       "require": "./dist/fusion.cjs",
       "default": "./dist/fusion.js"
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc -p tsconfig.build.json && node scripts/fix-declaration-imports.mjs && pnpm check:package-types && pnpm check:package-runtime && pnpm check:package-artifacts",
+    "check:package-artifacts": "node scripts/check-package-artifacts.mjs",
+    "check:package-runtime": "node scripts/check-package-runtime.mjs",
+    "check:package-types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck false --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM,DOM.Iterable --types node test-d/package-consumer.mts test-d/json-schema.d.ts",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
@@ -61,23 +76,25 @@
     "release": "pnpm build && changeset publish"
   },
   "peerDependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.0-beta.36",
-    "ai": "^7.0.0-beta.116"
+    "@ai-sdk/openai-compatible": "^3.0.1",
+    "ai": "^7.0.4"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^4.0.0-beta.14",
-    "@ai-sdk/provider-utils": "^5.0.0-beta.30"
+    "@ai-sdk/provider": "^4.0.0",
+    "@ai-sdk/provider-utils": "^5.0.1"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.0-beta.36",
-    "@biomejs/biome": "2.4.16",
-    "@changesets/cli": "^2.27.0",
-    "@types/node": "^25.9.3",
-    "ai": "^7.0.0-beta.116",
-    "tsup": "^8.5.0",
-    "typescript": "^6.0.3",
+    "@ai-sdk/openai-compatible": "^3.0.1",
+    "@biomejs/biome": "2.5.1",
+    "@changesets/cli": "^2.31.0",
+    "@types/node": "^26.0.1",
+    "ai": "^7.0.4",
+    "dotenv": "^17.4.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^7.0.2",
     "ultracite": "^7.8.3",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.9"
   },
   "publishConfig": {
     "access": "public"
@@ -91,6 +108,8 @@
     "llm",
     "openai-compatible",
     "friendli",
-    "openrouter"
+    "openrouter",
+    "opengateway",
+    "wafer"
   ]
 }

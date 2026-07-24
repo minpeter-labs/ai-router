@@ -3,6 +3,31 @@ import { getTopLevelMediaType } from "@ai-sdk/provider-utils";
 
 import type { Modality } from "./types";
 
+type NonSystemMessage = Exclude<
+  LanguageModelV4Prompt[number],
+  { role: "system" }
+>;
+type PromptPart = NonSystemMessage["content"][number];
+
+function addPartModalities(modalities: Set<Modality>, part: PromptPart): void {
+  if (part.type === "text" || part.type === "reasoning") {
+    modalities.add("text");
+    return;
+  }
+  if (part.type === "file" || part.type === "reasoning-file") {
+    modalities.add(fileModality(part.mediaType));
+    return;
+  }
+  if (part.type !== "tool-result" || part.output.type !== "content") {
+    return;
+  }
+  for (const output of part.output.value) {
+    if (output.type === "file") {
+      modalities.add(fileModality(output.mediaType));
+    }
+  }
+}
+
 /**
  * Scan a model-level prompt (`LanguageModelV4Prompt`, spec v4 — what the AI SDK
  * passes into `doGenerate`/`doStream`) and report which input modalities appear.
@@ -30,16 +55,7 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
     }
 
     for (const part of message.content) {
-      if (part.type === "text" || part.type === "reasoning") {
-        modalities.add("text");
-      } else if (part.type === "file") {
-        const modality = fileModality(part.mediaType);
-        if (modality !== null) {
-          modalities.add(modality);
-        }
-      }
-      // Other part types (tool-call / tool-result / reasoning-file / custom /
-      // tool-approval-*) are not input modalities for routing — ignored.
+      addPartModalities(modalities, part);
     }
   }
 
@@ -47,11 +63,10 @@ export function detectModalities(prompt: LanguageModelV4Prompt): Set<Modality> {
 }
 
 /**
- * Map a single file part's media type to a routing modality, or `null` when it
- * is not one we route on. Extracted from {@link detectModalities} to keep that
- * scan's nesting (and cognitive complexity) low.
+ * Map a single file part's media type to a routing modality. Unknown media
+ * types remain files rather than disappearing from capability routing.
  */
-function fileModality(rawMediaType: string): Modality | null {
+function fileModality(rawMediaType: string): Modality {
   // Strip any media-type parameters (e.g. `application/pdf; charset=…`) before
   // matching so `type/subtype` comparisons stay exact.
   const mediaType = rawMediaType.toLowerCase().split(";")[0].trim();
@@ -63,12 +78,13 @@ function fileModality(rawMediaType: string): Modality | null {
 
   // Normalizes 'image/png', 'image/*' and bare 'image' all to 'image'.
   const top = getTopLevelMediaType(mediaType);
-  if (top === "image" || top === "video" || top === "audio" || top === "text") {
+  if (top === "image" || top === "video" || top === "audio") {
     return top;
   }
 
-  // Unknown top-level types (other application/*) are not routed on.
-  return null;
+  // text/*, application/*, and vendor media types are still file parts and
+  // require generic file support; they must not route to text-part-only models.
+  return "file";
 }
 
 /**

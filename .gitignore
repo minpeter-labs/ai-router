@@ -4,7 +4,10 @@ coverage/
 *.log
 .DS_Store
 .turbo/
+
+# Local secrets — keep .env.example tracked.
 .env
 .env.*
+!.env.example
 # local-only benchmark harness + results (not part of the published package)
 bench/
